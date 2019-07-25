@@ -1,13 +1,13 @@
 # openCypher Transpiler
 
 
-This library help you to build an [openCypher](http://www.opencypher.org/) query layer on top of a relational database or structured data in data lakes. Built on top of this library, you can transpile openCypher query into a target query language used by the relational database. We have provided a sample target language renderer for [T-SQL](https://docs.microsoft.com/en-us/sql/t-sql/language-reference?view=sql-server-2017).
+This library helps you to build an [openCypher](http://www.opencypher.org/) query layer on top of a relational database or structured data in data lakes. By leveraging this library, you can transpile openCypher query into a target query language used by the relational database. We have provided a sample target language renderer for [T-SQL](https://docs.microsoft.com/en-us/sql/t-sql/language-reference?view=sql-server-2017).
 
-Originally we built this library to provide a [Property Graph](https://neo4j.com/developer/graph-database/#property-graph) data-layer for the petabyte-scale data assets in the Azure Data Lake. The property graph enables us to organize a vast catalog of data in an intuitive and traceable way. The openCypher query language allows data users that are already familiar with SQL-alike declarative query language to query the data assets with ease: in a graph where the relationship between data entities is a first class citizen, the data users no longer need to spend time on figuring out how individual data assets should be joined together. The data producers who are experts on their data would be the one to help define the relationship and is able to ensure its quality for downstream consumptions.
+Originally we built this library to support querying the petabyte-scale Windows 10 telemetry data assets in the [Azure Data Lake](https://azure.microsoft.com/en-us/solutions/data-lake/) as a [Property Graph](https://neo4j.com/developer/graph-database/#property-graph). We chose openCypher because it is a declaritive query language resembling SQL, which most our data consumers are already familiar with.
 
 This library has three main components:
 
-* A openCypher parser built on top of ANTLR4 and official openCypher grammar to parse and create an [AST](https://en.wikipedia.org/wiki/Abstract_syntax_tree) to abstract the syntactical structure of the graph query;
+* A openCypher parser built on top of ANTLR4 and the official openCypher grammar to parse and create an [AST](https://en.wikipedia.org/wiki/Abstract_syntax_tree) to abstract the syntactical structure of the graph query;
 * A logic planner transforms the AST into relational query logical plan similar to the [Relational Algebra](https://en.wikipedia.org/wiki/Relational_algebra);
 * A query code renderer produces the actual query code from the logical plan. In this repository, we provides a T-SQL renderer.
 
