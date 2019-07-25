@@ -1,0 +1,1 @@
+.results[0] | { cols: .columns, rows: [.data[].row | {a: .[0], b: .[1], c: .[2] | join("|")} ] } | {cols: .cols, rows: [.rows[] | [.a, .b, .c]]} | .cols, .rows[] | @csv
