@@ -1,0 +1,150 @@
+{
+  "Nodes": [
+    {
+      "Id": "Person",
+      "Name": "Person",
+      "IdProperty": {
+        "PropertyName": "id",
+        "PropertyType": "System.String"
+      },
+      "Properties": [
+        {
+          "PropertyName": "Name",
+          "PropertyType": "System.String"
+        },
+        {
+          "PropertyName": "Born",
+          "PropertyType": "System.Nullable`1[System.Int32]"
+        }
+      ]
+    },
+    {
+      "Id": "Movie",
+      "Name": "Movie",
+      "IdProperty": {
+        "PropertyName": "id",
+        "PropertyType": "System.String"
+      },
+      "Properties": [
+        {
+          "PropertyName": "Title",
+          "PropertyType": "System.String"
+        },
+        {
+          "PropertyName": "Tagline",
+          "PropertyType": "System.String"
+        },
+        {
+          "PropertyName": "Released",
+          "PropertyType": "System.Int32"
+        }
+      ]
+    }
+  ],
+  "Edges": [
+    {
+      "Id": "Person@ACTED_IN@Movie",
+      "Name": "ACTED_IN",
+      "FromNode": "Person",
+      "ToNode": "Movie",
+      "SourceIdProperty": {
+        "PropertyName": "_vertexId",
+        "PropertyType": "System.String"
+      },
+      "SinkIdProperty": {
+        "PropertyName": "_sink",
+        "PropertyType": "System.String"
+      },
+      "Properties": [
+        {
+          "PropertyName": "Roles",
+          "PropertyType": "System.String"
+        }
+      ]
+    },
+    {
+      "Id": "Person@REVIEWED@Movie",
+      "Name": "REVIEWED",
+      "FromNode": "Person",
+      "ToNode": "Movie",
+      "SourceIdProperty": {
+        "PropertyName": "_vertexId",
+        "PropertyType": "System.String"
+      },
+      "SinkIdProperty": {
+        "PropertyName": "_sink",
+        "PropertyType": "System.String"
+      },
+      "Properties": [
+        {
+          "PropertyName": "Summary",
+          "PropertyType": "System.String"
+        },
+        {
+          "PropertyName": "Rating",
+          "PropertyType": "System.Int32"
+        }
+      ]
+    },
+    {
+      "Id": "Person@DIRECTED@Movie",
+      "Name": "DIRECTED",
+      "FromNode": "Person",
+      "ToNode": "Movie",
+      "SourceIdProperty": {
+        "PropertyName": "_vertexId",
+        "PropertyType": "System.String"
+      },
+      "SinkIdProperty": {
+        "PropertyName": "_sink",
+        "PropertyType": "System.String"
+      },
+      "Properties": []
+    },
+    {
+      "Id": "Person@PRODUCED@Movie",
+      "Name": "PRODUCED",
+      "FromNode": "Person",
+      "ToNode": "Movie",
+      "SourceIdProperty": {
+        "PropertyName": "_vertexId",
+        "PropertyType": "System.String"
+      },
+      "SinkIdProperty": {
+        "PropertyName": "_sink",
+        "PropertyType": "System.String"
+      },
+      "Properties": []
+    },
+    {
+      "Id": "Person@WROTE@Movie",
+      "Name": "WROTE",
+      "FromNode": "Person",
+      "ToNode": "Movie",
+      "SourceIdProperty": {
+        "PropertyName": "_vertexId",
+        "PropertyType": "System.String"
+      },
+      "SinkIdProperty": {
+        "PropertyName": "_sink",
+        "PropertyType": "System.String"
+      },
+      "Properties": []
+    },
+    {
+      "Id": "Person@FOLLOWS@Person",
+      "Name": "FOLLOWS",
+      "FromNode": "Person",
+      "ToNode": "Person",
+      "SourceIdProperty": {
+        "PropertyName": "_vertexId",
+        "PropertyType": "System.String"
+      },
+      "SinkIdProperty": {
+        "PropertyName": "_sink",
+        "PropertyType": "System.String"
+      },
+      "Properties": []
+    }
+  ]
+}

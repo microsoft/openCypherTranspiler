@@ -1,5 +1,54 @@
+# openCypher Transpiler
 
-# Contributing
+
+This library helps you to build an [openCypher](http://www.opencypher.org/) query layer on top of a relational database or structured data in data lakes. By leveraging this library, you can transpile openCypher query into a target query language used by the relational database. We have provided a sample target language renderer for [T-SQL](https://docs.microsoft.com/en-us/sql/t-sql/language-reference?view=sql-server-2017).
+
+Originally we built this library to support querying the petabyte-scale Windows 10 telemetry data assets in the [Azure Data Lake](https://azure.microsoft.com/en-us/solutions/data-lake/) as a [Property Graph](https://neo4j.com/developer/graph-database/#property-graph). We chose openCypher because it is a declaritive query language resembling SQL, which most our data consumers are already familiar with.
+
+This library has three main components:
+
+* A openCypher parser built on top of ANTLR4 and the official openCypher grammar to parse and create an [AST](https://en.wikipedia.org/wiki/Abstract_syntax_tree) to abstract the syntactical structure of the graph query;
+* A logic planner transforms the AST into relational query logical plan similar to the [Relational Algebra](https://en.wikipedia.org/wiki/Relational_algebra);
+* A query code renderer produces the actual query code from the logical plan. In this repository, we provides a T-SQL renderer.
+
+The library, written in [.Net Core](https://dotnet.microsoft.com/download), is cross-platform.
+
+
+## Using the library
+
+```CSharp
+// To Be Provided
+```
+
+
+## Build on top of this library
+
+```CSharp
+// To Be Provided
+```
+
+
+## Test designs
+
+Transpiler is tested using the T-SQL target renderer and its results are compared against what is produced by Cypher from the [Neo4j Graph Database](https://neo4j.com/graph-database). Each test compares the query results from the transpiled query on [Microsoft SQL for Linux](https://www.microsoft.com/en-us/sql-server/sql-server-2017) against Cypher on Neo4j 3.x to ensure they are consistent in term of data type and contents.
+
+To run the tests, simply run under the project root folder:
+```batch
+dotnet test
+```
+
+
+## Limitations To Be Addressed
+
+* MATCH pattern with unspecified labels which cannot be implied to a single label/relationship type
+* MATCH pattern with variable-length relationship
+* The logical plan is currently not further optimized with assumption the underlying RDBMS engine does this work
+* list,collect,UNWIND is currently not supported
+* Source table must already been normalized to be used as graph node/edge
+* Readonly query is supported. CALL and write (such as MERGE) is not supported.
+
+
+## Contributing
 
 This project welcomes contributions and suggestions.  Most contributions require you to agree to a
 Contributor License Agreement (CLA) declaring that you have the right to, and actually do, grant us

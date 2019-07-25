@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netcoreapp2.1</TargetFramework>
+    <RootNamespace>Microsoft.GraphPlatform.Transpiler.openCypherParser</RootNamespace>
+    <NoWarn>CS3021</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Remove="Logical\**" />
+    <EmbeddedResource Remove="Logical\**" />
+    <None Remove="Logical\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Antlr4.Runtime.Standard" Version="4.7.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="Common\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Common\Common.csproj" />
+  </ItemGroup>
+
+</Project>
