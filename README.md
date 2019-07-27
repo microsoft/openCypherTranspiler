@@ -3,7 +3,7 @@
 
 This library helps you to build an [openCypher](http://www.opencypher.org/) query layer on top of a relational database or structured data in data lakes. By leveraging this library, you can transpile openCypher query into a target query language used by the relational database. We have provided a sample target language renderer for [T-SQL](https://docs.microsoft.com/en-us/sql/t-sql/language-reference?view=sql-server-2017).
 
-Originally we built this library to support querying the petabyte-scale Windows 10 telemetry data assets in the [Azure Data Lake](https://azure.microsoft.com/en-us/solutions/data-lake/) as a [Property Graph](https://neo4j.com/developer/graph-database/#property-graph). We chose openCypher because it is a declaritive query language resembling SQL, which most our data consumers are already familiar with.
+Originally we built this library to support querying the petabyte-scale Windows 10 telemetry data assets in the [Azure Data Lake](https://azure.microsoft.com/en-us/solutions/data-lake/) as a [Property Graph](https://neo4j.com/developer/graph-database/#property-graph). We chose openCypher because it is a declarative query language resembling SQL, which most our data consumers are already familiar with.
 
 This library has three main components:
 
@@ -37,15 +37,21 @@ To run the tests, simply run under the project root folder:
 dotnet test
 ```
 
+## Roadmap
 
-## Limitations To Be Addressed
+### Current work in Progress
+* Publish NuGet packages
+* Update docs and helps
+* Inline conditions with node labels (e.g. MATCH (n:))
+* list, collect, UNWIND support
 
-* MATCH pattern with unspecified labels which cannot be implied to a single label/relationship type
+### Issues to address on the horizon
+* MATCH pattern with unspecified labels or label patterns maps to more than a single label/relationship type
 * MATCH pattern with variable-length relationship
-* The logical plan is currently not further optimized with assumption the underlying RDBMS engine does this work
-* list,collect,UNWIND is currently not supported
-* Source table must already been normalized to be used as graph node/edge
-* Readonly query is supported. CALL and write (such as MERGE) is not supported.
+* MATCH pattern in WHERE conditions
+* Logical plan is not further optimized and currently offloaded to underlying RDBMS query engine
+* Support only read queries (no CREATE/MERGE)
+* SQLRenderer: Source table must already been normalized to be used as graph node/edge
 
 
 ## Contributing

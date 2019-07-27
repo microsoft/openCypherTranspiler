@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <TargetFramework>netcoreapp2.1</TargetFramework>
-    <RootNamespace>Microsoft.GraphPlatform.Transpiler.CommonTest</RootNamespace>
+    <RootNamespace>openCypherTranspiler.CommonTest</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup>

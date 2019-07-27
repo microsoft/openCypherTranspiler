@@ -5,7 +5,7 @@
 
     <IsPackable>false</IsPackable>
 
-    <RootNamespace>Microsoft.GraphPlatform.Transpiler.SQLRenderer.Test</RootNamespace>
+    <RootNamespace>openCypherTranspiler.SQLRenderer.Test</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup>
