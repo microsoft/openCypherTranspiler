@@ -5,7 +5,7 @@
 
     <IsPackable>false</IsPackable>
 
-    <RootNamespace>Microsoft.GraphPlatform.Transpiler.LogicalPlanner.Test</RootNamespace>
+    <RootNamespace>openCypherTranspiler.LogicalPlanner.Test</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup>
