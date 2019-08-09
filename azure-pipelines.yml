@@ -23,10 +23,10 @@ steps:
   displayName: 'Building the source tree'
 
 - script: |
-    dotnet test --filter "FullyQualifiedName~openCypherTranspiler.openCypherParser"
-    dotnet test --filter "FullyQualifiedName~openCypherTranspiler.LogicalPlanner"
+    dotnet test --filter "FullyQualifiedName~openCypherTranspiler.openCypherParser" -f netcoreapp2.1
+    dotnet test --filter "FullyQualifiedName~openCypherTranspiler.LogicalPlanner" -f netcoreapp2.1
   displayName: 'Running unit regression tests that does not require Docker'
 
 - script: |
-    dotnet test --filter "FullyQualifiedName~openCypherTranspiler.SQLRenderer"
+    dotnet test --filter "FullyQualifiedName~openCypherTranspiler.SQLRenderer" -f netcoreapp2.1
   displayName: 'Running integration test with SQLRenderer that requires Docker'
