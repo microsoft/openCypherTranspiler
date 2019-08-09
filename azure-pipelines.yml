@@ -16,12 +16,17 @@ variables:
   patch: $[counter('myversioncounter', 0)]
 
 steps:
+
 - script: |
     echo Building the source
-    echo dotnet build -c $(buildConfiguration)
+    echo dotnet build -c $(buildConfiguration) -p:TargetFramework=netcoreapp2.1
   displayName: 'Building the source tree'
 
 - script: |
     dotnet test --filter "FullyQualifiedName~openCypherTranspiler.openCypherParser"
     dotnet test --filter "FullyQualifiedName~openCypherTranspiler.LogicalPlanner"
   displayName: 'Running unit regression tests that does not require Docker'
+
+- script: |
+    dotnet test --filter "FullyQualifiedName~openCypherTranspiler.SQLRenderer"
+  displayName: 'Running integration test with SQLRenderer that requires Docker'

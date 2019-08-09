@@ -21,6 +21,7 @@ using openCypherTranspiler.CommonTest;
 using openCypherTranspiler.openCypherParser;
 using openCypherTranspiler.LogicalPlanner;
 using Microsoft.Extensions.Configuration;
+using System.Collections.Generic;
 
 namespace openCypherTranspiler.SQLRenderer.Test
 {
@@ -204,7 +205,8 @@ namespace openCypherTranspiler.SQLRenderer.Test
             var goLines = movieDbCreationScript.Select(
                 (l, i) => string.Compare(l.Trim(), "go", true) == 0 || string.Compare(l.Trim(), "go;", true) == 0 ?
                     i : -1
-                ).Where(idx => idx >= 0).Append(movieDbCreationScript.Length);
+                ).Where(idx => idx >= 0)
+                .Union(new List<int>() { movieDbCreationScript.Length });
 
             using (var con = _conn_init())
             {

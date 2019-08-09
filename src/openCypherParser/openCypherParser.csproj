@@ -4,7 +4,7 @@
     <IsPackable>true</IsPackable>
     <PackageId>openCypherTranspiler.openCypherParser</PackageId>
     <Description>openCypherTranspiler transpiles openCypher query language to a target relational query language, such as T-SQL.</Description>
-    <TargetFrameworks>netcoreapp2.1;netstandard2.0;net46</TargetFrameworks>
+    <TargetFrameworks>netcoreapp2.1;netstandard2.0;net462</TargetFrameworks>
     <RootNamespace>openCypherTranspiler.openCypherParser</RootNamespace>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <Copyright>Copyright Microsoft 2019</Copyright>
@@ -25,7 +25,7 @@
     <PackageReference Include="Antlr4.Runtime.Standard" Version="4.7.2" />
   </ItemGroup>
 
-  <ItemGroup Condition=" '$(TargetFramework)' == 'net46' ">
+  <ItemGroup Condition=" '$(TargetFramework)' == 'net462' ">
     <PackageReference Include="System.ValueTuple" Version="4.5.0" />
   </ItemGroup>
 
