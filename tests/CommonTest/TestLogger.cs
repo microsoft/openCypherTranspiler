@@ -21,9 +21,7 @@ namespace openCypherTranspiler.CommonTest
         protected override void LogMessage(string msgFormat, params object[] msgArgs)
         {
             Console.WriteLine(msgFormat, msgArgs);
-#if DEBUG
             Debug.WriteLine(msgFormat, msgArgs);
-#endif
         }
     }
 }

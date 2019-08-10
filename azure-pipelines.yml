@@ -1,0 +1,32 @@
+# Starter pipeline
+# Start with a minimal pipeline that you can customize to build and deploy your code.
+# Add steps that build, run tests, deploy, and more:
+# https://aka.ms/yaml
+
+trigger:
+- master
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  buildConfiguration: 'release'
+  major: 0
+  minor: 1
+  patch: $[counter('myversioncounter', 0)]
+
+steps:
+
+- script: |
+    echo Building the source
+    echo dotnet build -c $(buildConfiguration) -p:TargetFramework=netcoreapp2.1
+  displayName: 'Building the source tree'
+
+- script: |
+    dotnet test --filter "FullyQualifiedName~openCypherTranspiler.openCypherParser" -f netcoreapp2.1
+    dotnet test --filter "FullyQualifiedName~openCypherTranspiler.LogicalPlanner" -f netcoreapp2.1
+  displayName: 'Running unit regression tests that does not require Docker'
+
+- script: |
+    dotnet test --filter "FullyQualifiedName~openCypherTranspiler.SQLRenderer" -f netcoreapp2.1
+  displayName: 'Running integration test with SQLRenderer that requires Docker'

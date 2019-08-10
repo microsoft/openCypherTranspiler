@@ -141,12 +141,22 @@ namespace openCypherTranspiler.SQLRenderer.Test
                 {
                     if (rebuildIfExists)
                     {
-                        if (matchingContainer.Status == "running")
+                        try
                         {
-                            await _client.Containers.StopContainerAsync(matchingContainer.ID, new ContainerStopParameters());
+                            if (matchingContainer.State == "running")
+                            {
+                                await _client.Containers.StopContainerAsync(matchingContainer.ID, new ContainerStopParameters());
+                            }
+                            await _client.Containers.RemoveContainerAsync(matchingContainer.ID, new ContainerRemoveParameters());
+                            matchingContainer = null;
                         }
-                        await _client.Containers.RemoveContainerAsync(matchingContainer.ID, new ContainerRemoveParameters());
-                        matchingContainer = null;
+                        catch (Exception)
+                        {
+                            _logger?.LogCritical("Failed to rebuild test container.");
+                            _logger?.LogCritical($"MismatchInfo: {string.Join("\n", mismatchInfo)}");
+                            _logger?.LogCritical($"MatchingContainer.State(Status): {matchingContainer.State}({matchingContainer.Status})");
+                            throw;
+                        }
                     }
                     else
                     {

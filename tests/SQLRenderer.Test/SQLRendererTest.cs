@@ -14,13 +14,15 @@ using System.Runtime.InteropServices;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Neo4j.Driver.V1;
 using Docker.DotNet;
-using Docker.DotNet.Models;
+using Microsoft.Extensions.Configuration;
+using System.Collections.Generic;
+using System.Threading;
 using openCypherTranspiler.Common.Exceptions;
 using openCypherTranspiler.Common.Logging;
 using openCypherTranspiler.CommonTest;
 using openCypherTranspiler.openCypherParser;
 using openCypherTranspiler.LogicalPlanner;
-using Microsoft.Extensions.Configuration;
+
 
 namespace openCypherTranspiler.SQLRenderer.Test
 {
@@ -97,6 +99,9 @@ namespace openCypherTranspiler.SQLRenderer.Test
             var sqlPassword = configuration
                 .GetSection("appSettings")
                 .GetSection("sqlPassword").Value;
+            var skipInitialization = string.Compare(configuration
+                .GetSection("appSettings")
+                .GetSection("skipInitialization").Value, "true", true) == 0;
 
             var neo4jBoltUrl = $"bolt://{neo4jHost}:{neo4jPort}";
             var sqlConnStrInit = $"Data Source={sqlHost},{sqlPort};User id=SA;Password={sqlPassword};";
@@ -107,7 +112,7 @@ namespace openCypherTranspiler.SQLRenderer.Test
             _conn_init = () => new SqlConnection(sqlConnStrInit);
 
             // initialize test harness
-            if (!File.Exists("./TestInitDone.tmp"))
+            if (!File.Exists("./TestInitDone.tmp") || !skipInitialization)
             {
                 if (useDocker)
                 {
@@ -139,18 +144,6 @@ namespace openCypherTranspiler.SQLRenderer.Test
         }
 
         #endregion Test initialization and clean up
-
-        private async Task PullDockerImage(DockerClient client, string imageName, string tagName = "")
-        {
-            await client.Images.CreateImageAsync(
-                new ImagesCreateParameters
-                {
-                    FromImage = imageName,
-                    Tag = tagName,
-                },
-                null,
-                null);
-        }
 
         private async Task CreateTestHarnessContainers(
             string neo4jUser,
@@ -198,13 +191,57 @@ namespace openCypherTranspiler.SQLRenderer.Test
             }
         }
 
+        private void WaitForSQLToInitialize()
+        {
+            var cmdText = "USE octestdb;";
+            var waitInterval = 5000;
+            var waitIntervalMax = 180000;
+            var backoutFactor = 2;
+            var retriesMax = 5;
+            int retry = 0;
+            while(retry < retriesMax)
+            {
+                try
+                {
+                    using (var con = _conn_init())
+                    {
+                        con.Open();
+                        using (var command = new SqlCommand(cmdText, con))
+                        {
+                            command.ExecuteNonQuery();
+                        }
+                        con.Close();
+                    }
+                    break;
+                }
+                catch (SqlException e)
+                {
+                    if (retry < retriesMax)
+                    {
+                        int retryTime = Math.Min((int)(waitInterval * Math.Pow(backoutFactor, retry)), waitIntervalMax);
+                        Thread.Sleep(retryTime);
+                        _logger?.Log($"SQL Server is not ready yet, retry in {retryTime/1000} seconds ...");
+                        retry++;
+                        continue;
+                    }
+                    else
+                    {
+                        throw;
+                    }
+                }
+            }
+        }
+
         private void InitializeSQLDB()
         {
             var movieDbCreationScript = File.ReadAllLines(@"./TestData/MovieDBSQLCmds.sql");
             var goLines = movieDbCreationScript.Select(
                 (l, i) => string.Compare(l.Trim(), "go", true) == 0 || string.Compare(l.Trim(), "go;", true) == 0 ?
                     i : -1
-                ).Where(idx => idx >= 0).Append(movieDbCreationScript.Length);
+                ).Where(idx => idx >= 0)
+                .Union(new List<int>() { movieDbCreationScript.Length });
+
+            WaitForSQLToInitialize();
 
             using (var con = _conn_init())
             {
