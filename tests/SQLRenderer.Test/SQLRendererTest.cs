@@ -332,8 +332,10 @@ namespace openCypherTranspiler.SQLRenderer.Test
 
         private string TranspileToSQL(string cypherQueryText)
         {
+            var parser = new OpenCypherParser(_logger);
+            var queryNode = parser.Parse(cypherQueryText);
             var plan = LogicalPlan.ProcessQueryTree(
-                    OpenCypherParser.Parse(cypherQueryText, _logger),
+                    parser.Parse(cypherQueryText),
                     _graphDef,
                     _logger);
             var sqlRender = new SQLRenderer(_graphDef, _logger);
@@ -396,8 +398,6 @@ WITH p.Name as PersonName, m.Title as MovieTitle, CASE WHEN p.Name = 'Tom Hanks'
 WHERE PersonName starts with 'T'
 RETURN PersonName, MovieTitle,NameFlag, 
 CASE WHEN PersonName = 'Tom Hanks' THEN 1 WHEN PersonName starts with 'Tom' THEN 2 WHEN PersonName starts with 'T' THEN 3 ELSE 0 END as NameFlag2
-ORDER BY PersonName, MovieTitle
-LIMIT 100
 ";
                 RunQueryAndCompare(queryText);
             }

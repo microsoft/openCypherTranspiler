@@ -488,7 +488,8 @@ namespace openCypherTranspiler.LogicalPlanner
     }
 
     /// <summary>
-    /// Operator to satisfy WHERE
+    /// Operator for row selections (e.g. WHERE or LIMIT)
+    /// We also captures ORDERING instructions in this operator, too
     /// </summary>
     public sealed class SelectionOperator : UnaryLogicalOperator
     {
@@ -498,13 +499,13 @@ namespace openCypherTranspiler.LogicalPlanner
             UnexpandedEntityInequalityConditions = null;
             SetInOperator(inOp);
         }
-        public SelectionOperator(LogicalOperator inOp,IList<QueryExpressionOrderBy> orderExpr, IList<QueryExpressionLimit> limitExpr)
+        public SelectionOperator(LogicalOperator inOp,IList<SortItem> orderExprs, LimitClause limit)
         {
             FilterExpression = null;
             UnexpandedEntityInequalityConditions = null;
             SetInOperator(inOp);
-            OrderByExpressions = orderExpr;
-            LimitExpressions = limitExpr;
+            OrderByExpressions = orderExprs;
+            Limit = limit;
         }
 
         public SelectionOperator(LogicalOperator inOp, IEnumerable<(string, string)> entityInquityConds)
@@ -517,14 +518,14 @@ namespace openCypherTranspiler.LogicalPlanner
         public QueryExpression FilterExpression { get; private set; }
 
         /// <summary>
-        ///  use to store ORDER BY expression under WITH or RETURN clause
+        /// use to store ORDER BY expression under WITH or RETURN clause
         /// </summary>
-        public IList<QueryExpressionOrderBy> OrderByExpressions { get; private set; }
+        public IList<SortItem> OrderByExpressions { get; private set; }
 
         /// <summary>
         /// use to store LIMIT expression under WITH or RETURN clause
         /// </summary>
-        public IList<QueryExpressionLimit> LimitExpressions { get; private set; }
+        public LimitClause Limit { get; private set; }
 
         /// <summary>
         /// Inequality conditions to be added after binding, specificially reserved for the implied inequality
@@ -611,11 +612,11 @@ namespace openCypherTranspiler.LogicalPlanner
             // Selection operator may have additional field references in the where/order by conditions that were not referenced in output
             // Add these as well to the input
             
-            Debug.Assert(FilterExpression != null || OrderByExpressions != null || LimitExpressions != null );
+            Debug.Assert(FilterExpression != null || OrderByExpressions != null || Limit != null );
             var allPropertyReferences = new List<QueryExpressionProperty>();
 
             var propsFromFilterExprs = FilterExpression?.GetChildrenQueryExpressionType<QueryExpressionProperty>();
-            var propsFromOrderByExprs = OrderByExpressions?.SelectMany(n => n.GetChildrenQueryExpressionType<QueryExpressionProperty>());
+            var propsFromOrderByExprs = OrderByExpressions?.SelectMany(n => n.InnerExpression.GetChildrenQueryExpressionType<QueryExpressionProperty>());
 
             if(propsFromOrderByExprs != null)
             {
@@ -666,11 +667,6 @@ namespace openCypherTranspiler.LogicalPlanner
                 {
                     // reference to an existing field
                     // nothing need to be done
-                    // add a check if expression alias did exist
-                    if(OutOperators.First().OutputSchema.All(n => n.FieldAlias != varName))
-                    {
-                        throw new TranspilerSyntaxErrorException($"single field name: {varName} not existed in output schema of depth {Depth} selection operator.");
-                    }
                 }
             }
         }
@@ -785,23 +781,24 @@ namespace openCypherTranspiler.LogicalPlanner
                 }
             }
         }
+
         internal override void AppendReferencedProperties(IDictionary<string, EntityField> entityFields)
         {
-
+            /*
             // Adding more logic here, as some of upstream selection operator is selection operator, then the extra field in order 
             // by clause need to flow down to the referenced field.
-            if(InOperator is SelectionOperator)
+            if (InOperator is SelectionOperator)
             {
                 var preSelectionOp = (InOperator as SelectionOperator);
                 var orderExpr = preSelectionOp?.OrderByExpressions;
                 if (orderExpr?.Count() > 0)
                 {
                     var propList = orderExpr
-                        .SelectMany(n => n.GetChildrenQueryExpressionType<QueryExpressionProperty>())
+                        .SelectMany(n => n.InnerExpression.GetChildrenQueryExpressionType<QueryExpressionProperty>())
                         .Where(p => p.PropertyName != null && p.VariableName != null)
                         .GroupBy(l => l.VariableName)
                         ?.ToDictionary(p => p.Key, p => p.Select(n => n.PropertyName));
-                    //looking for new entity fields in the slection operrator and then add to the entity field reference dictionary
+                    // looking for new entity fields in the selection operator and then add to the entity field reference dictionary
                     if (propList != null)
                     {
                         foreach(var entry in propList)
@@ -822,6 +819,7 @@ namespace openCypherTranspiler.LogicalPlanner
                     }
                 }
             }
+            */
         }
     }
 

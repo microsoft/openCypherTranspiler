@@ -10,9 +10,9 @@ using openCypherTranspiler.Common.Exceptions;
 namespace openCypherTranspiler.openCypherParser.AST
 {
     /// <summary>
-    /// represents the parsed group of matched patterns
+    /// Represents the parsed MATCH clauses with one or more match patterns
     /// </summary>
-    public class MatchDataSource : TreeNode
+    public class MatchClause : TreeNode
     {
         #region Implements TreeNode
         protected override IEnumerable<TreeNode> Children
@@ -50,7 +50,7 @@ namespace openCypherTranspiler.openCypherParser.AST
         /// </summary>
         /// <param name="entity"></param>
         /// <returns></returns>
-        public MatchDataSource AssignGeneratedEntityAliasToAnonEntities(string anonVarPrefix)
+        public MatchClause AssignGeneratedEntityAliasToAnonEntities(string anonVarPrefix)
         {
             var varIdx = 0;
             var existingAliases = new HashSet<string>(MatchPatterns.SelectMany(p => p.Select(e => e.Alias)).Where(a => !string.IsNullOrEmpty(a)).Distinct());
@@ -61,7 +61,7 @@ namespace openCypherTranspiler.openCypherParser.AST
             }
 
             // creating a new DS with implied labels fixed up
-            var matchDsNew = new MatchDataSource()
+            var matchDsNew = new MatchClause()
             {
                 MatchPatterns = MatchPatterns.Select(p => new MatchPattern(p.IsOptionalMatch, p.Select(e =>
                 {

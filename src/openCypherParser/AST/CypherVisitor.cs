@@ -325,9 +325,9 @@ namespace openCypherTranspiler.openCypherParser.AST
         }
 
 
-        private PartialQueryTreeNode CreateQueryPartFromReadingClauses(
+        private PartialQueryNode CreateQueryPartFromReadingClauses(
             CypherParser.OC_ReadingClauseContext readingClause,
-            PartialQueryTreeNode prevQueryPart
+            PartialQueryNode prevQueryPart
             )
         {
             // this function consolidates consolidate multiple matches, each is a list of MatchPattern, and
@@ -362,10 +362,10 @@ namespace openCypherTranspiler.openCypherParser.AST
             matchParts.AddRange(matchPatterns);
 
             // construct the match data source (representing a group of matches)
-            MatchDataSource matchDs = null;
+            MatchClause matchDs = null;
             if (matchParts.Count > 0)
             {
-                matchDs = new MatchDataSource()
+                matchDs = new MatchClause()
                 {
                     MatchPatterns = matchParts
                 };
@@ -412,23 +412,23 @@ namespace openCypherTranspiler.openCypherParser.AST
                 )
                 .ToList();
 
-            return new PartialQueryTreeNode()
+            return new PartialQueryNode()
             {
                 MatchData = matchDs,
-                PostCondition = result.Condition,
+                FilterExpression = result.Condition,
                 ProjectedExpressions = returnedExprs,
                 PipedData = prevQueryPart,
                 IsDistinct = false,  // MATCH reading clause will not be come with DISTINCT keyword
                 CanChainNonOptionalMatch = !isOptionalMatch,
-                IsImplicitProjection = true, // MATCH's projection is always implied (returning all aliased nodes)
+                IsImplicitProjection = true, // MATCH's projection is always implied (returning all aliased entities)
             };
         }
 
-        private SingleQueryTreeNode ConstructSingleQuery([NotNull] CypherParser.OC_SinglePartQueryContext context, PartialQueryTreeNode prevQueryPart)
+        private SingleQueryNode ConstructSingleQuery([NotNull] CypherParser.OC_SinglePartQueryContext context, PartialQueryNode prevQueryPart)
         {
             Debug.Assert(context.oC_Return() != null);
 
-            SingleQueryTreeNode queryNode = null;
+            SingleQueryNode queryNode = null;
 
             for (int i = 0; i < context.ChildCount; i++)
             {
@@ -446,36 +446,28 @@ namespace openCypherTranspiler.openCypherParser.AST
                 }
                 else if (child is CypherParser.OC_ReturnContext) // RETURN
                 {
-                    // when we see an WITH, we know that we we are done with one query part of a multi-query part
-                    // we will construct a new query part object, and if applicable, chain with previous query part
-                    // and construct the MATCH patterns
                     if (prevQueryPart == null)
                     {
                         throw new TranspilerNotSupportedException("RETURN projection without reading clauses (a.k.a. Match)");
                     }
 
-                    // returns valuetuple type:
-                    //  { IsDistinct(bool), ReturnItems(IList<QueryExpressionWithAlias>), OrderByItems(IList<QueryExpressionOrderBy>) }
                     var returnResult = ((
                             bool IsDistinct,
                             IList<QueryExpressionWithAlias> ReturnItems,
-                            IList<QueryExpressionOrderBy> OrderByItems,
-                            IList<QueryExpressionLimit> LimitItems))Visit(child);
+                            IList<SortItem> OrderByItems,
+                            LimitClause Limit))Visit(child);
                     var projectionExprs = returnResult.ReturnItems ?? throw new TranspilerSyntaxErrorException($"Expecting a valid list of items to be returned: {child.GetText()}");
-                    var orderedExprs = returnResult.OrderByItems;
-                    var limitExprs = returnResult.LimitItems;
-
                     bool isDistinct = returnResult.IsDistinct;
-                    var singleQueryNode = new SingleQueryTreeNode()
+                    var singleQueryNode = new SingleQueryNode()
                     {
                         PipedData = prevQueryPart,
                         EntityPropertySelected = projectionExprs,
                         IsDistinct = isDistinct,
-                        EntityPropertyOrderBy = orderedExprs,
-                        EntityRowsLimit = limitExprs,
+                        OrderByClause = returnResult.OrderByItems,
+                        Limit = returnResult.Limit,
                     };
 
-                    // Check that return has no conflict
+                    // Check that returned have no conflicting aliases
                     var firstDup = projectionExprs.GroupBy(expr => expr.Alias).FirstOrDefault(g => g.Count() > 1);
                     if (firstDup != null)
                     {
@@ -500,7 +492,7 @@ namespace openCypherTranspiler.openCypherParser.AST
                 }
                 else
                 {
-                    // skip the rest type nodes (e.g. SP)
+                    // ignore the rest type syntax nodes (e.g. SP)
                 }
             }
 
@@ -542,7 +534,7 @@ namespace openCypherTranspiler.openCypherParser.AST
             _logger?.LogVerbose("{0}: {1}", "VisitOC_Cypher", context.GetText());
             // return the final parsed tree of type QueryTreeNode (pass through)
             Debug.Assert(context.oC_Statement() != null);
-            return Visit(context.oC_Statement()) as QueryTreeNode ?? throw new TranspilerInternalErrorException("Parsing oC_Statement");
+            return Visit(context.oC_Statement()) as QueryNode ?? throw new TranspilerInternalErrorException("Parsing oC_Statement");
         }
 
         public override object VisitOC_Query([NotNull] CypherParser.OC_QueryContext context)
@@ -551,7 +543,7 @@ namespace openCypherTranspiler.openCypherParser.AST
             if (context.oC_RegularQuery() != null)
             {
                 // return the final parsed tree of type QueryTreeNode (pass through)
-                return Visit(context.oC_RegularQuery()) as QueryTreeNode ?? throw new TranspilerInternalErrorException("Parsing oc_RegularQuery");
+                return Visit(context.oC_RegularQuery()) as QueryNode ?? throw new TranspilerInternalErrorException("Parsing oc_RegularQuery");
             }
             else
             {
@@ -565,24 +557,24 @@ namespace openCypherTranspiler.openCypherParser.AST
             // returns QueryTreeNode, can be a passed through SingleQueryTreeNode, or InfixQueryTreeNode
 
             Debug.Assert(context.oC_SingleQuery() != null);
-            var rootNode = Visit(context.oC_SingleQuery()) as QueryTreeNode ?? throw new TranspilerInternalErrorException("Parsing oC_SingleQuery");
+            var rootNode = Visit(context.oC_SingleQuery()) as QueryNode ?? throw new TranspilerInternalErrorException("Parsing oC_SingleQuery");
 
             if ((context.oC_Union()?.Length ?? 0) > 0)
             {
                 foreach (var childCtx in context.oC_Union())
                 {
                     Debug.Assert(childCtx.UNION() != null);
-                    var unioned = new InfixQueryTreeNode()
+                    var unioned = new InfixQueryNode()
                     {
                         LeftQueryTreeNode = rootNode,
-                        RightQueryTreeNode = Visit(childCtx.oC_SingleQuery()) as QueryTreeNode ?? throw new TranspilerInternalErrorException("Parsing oC_SingleQuery of UNION"),
-                        Operator = childCtx.ALL() != null ? InfixQueryTreeNode.QueryOperator.UnionAll : InfixQueryTreeNode.QueryOperator.Union
+                        RightQueryTreeNode = Visit(childCtx.oC_SingleQuery()) as QueryNode ?? throw new TranspilerInternalErrorException("Parsing oC_SingleQuery of UNION"),
+                        Operator = childCtx.ALL() != null ? InfixQueryNode.QueryOperator.UnionAll : InfixQueryNode.QueryOperator.Union
                     };
                     rootNode = unioned;
                 }
             }
             
-            return Visit(context.oC_SingleQuery()) as QueryTreeNode ?? throw new TranspilerInternalErrorException("Parsing oC_SingleQuery");
+            return Visit(context.oC_SingleQuery()) as QueryNode ?? throw new TranspilerInternalErrorException("Parsing oC_SingleQuery");
         }
 
         public override object VisitOC_SingleQuery([NotNull] CypherParser.OC_SingleQueryContext context)
@@ -594,11 +586,11 @@ namespace openCypherTranspiler.openCypherParser.AST
             // to do this, we walk down to the bottom (leaf node) of the tree and walk back, and each step we
             // fix up the current query parts and update the returned entity types
             // For any types we cannot infer, we throw exception
-            var singleQuery = VisitChildren(context) as SingleQueryTreeNode ?? throw new TranspilerInternalErrorException("Parsing oC_SinglePartQuery or oC_MultiPartQuery");
+            var singleQuery = VisitChildren(context) as SingleQueryNode ?? throw new TranspilerInternalErrorException("Parsing oC_SinglePartQuery or oC_MultiPartQuery");
 
-            var queryChainTreeNode = singleQuery.PipedData as PartialQueryTreeNode;
+            var queryChainTreeNode = singleQuery.PipedData as PartialQueryNode;
             Debug.Assert(queryChainTreeNode != null); // should be guaranteed by child visitor already
-            var queryChain = new Stack<PartialQueryTreeNode>();
+            var queryChain = new Stack<PartialQueryNode>();
             queryChain.Push(queryChainTreeNode);
 
             while (queryChainTreeNode.PipedData != null)
@@ -726,15 +718,18 @@ namespace openCypherTranspiler.openCypherParser.AST
         public override object VisitOC_MultiPartQuery([NotNull] CypherParser.OC_MultiPartQueryContext context)
         {
             _logger?.LogVerbose("{0}: {1}", "VisitOC_MultiPartQuery", context.GetText());
-            // return SingleQueryTreeNode
-            // multipart query has several situations we need to handle
+            
+            // Multipart query has several situations we need to handle
             //   - MATCH not followed by any with but termination  (MATCH RETURN)
             //   - with immediately follows a MATCH (MATCH WITH RETURN)
             //   - with follows other WITH (MATCH WITH WITH RETURN)
             //   - standalone WITH (not supported for now)
+            //
+            // In this implementation, we construct a chain of partial query tree node, one for each
+            // MATCH clause and WITH clause
 
-            PartialQueryTreeNode prevQueryPart = null;
-            SingleQueryTreeNode queryNode = null;
+            SingleQueryNode queryNode = null;
+            PartialQueryNode prevQueryPart = null;
 
             for (int i = 0; i < context.ChildCount; i++)
             {
@@ -742,16 +737,19 @@ namespace openCypherTranspiler.openCypherParser.AST
 
                 if (child is CypherParser.OC_ReadingClauseContext) // MATCH (WHERE)
                 {
+                    Debug.Assert(queryNode == null);
+
                     var partQueryTree = CreateQueryPartFromReadingClauses(
                         child as CypherParser.OC_ReadingClauseContext,
                         prevQueryPart
                         );
 
-                    // set state for next clause
                     prevQueryPart = partQueryTree;
                 }
                 else if (child is CypherParser.OC_WithContext) // WITH (WHERE)
                 {
+                    Debug.Assert(queryNode == null);
+
                     // when we see an WITH, we know that we we are done with one query part of a multi-query part
                     // we will construct a new query part object, and if applicable, chain with previous query part
                     // and construct the MATCH patterns
@@ -760,15 +758,13 @@ namespace openCypherTranspiler.openCypherParser.AST
                         throw new TranspilerNotSupportedException("WITH projection without reading clauses (a.k.a. Match)");
                     }
 
-                    // child visit of OC_WITH returns valuetuple type representing the return body and flags:
-                    //  { IsDistinct(bool), ReturnItems(IList<QueryExpressionWithAlias>), Condition(QueryExpression) }
                     var withResult = ((
                         bool IsDistinct,
-                        IList<QueryExpressionWithAlias>
-                        ReturnItems,
+                        IList<QueryExpressionWithAlias> ReturnItems,
                         QueryExpression Condition,
-                        IList<QueryExpressionOrderBy> OrderByItems,
-                        IList<QueryExpressionLimit> LimitItems))Visit(child);
+                        IList<SortItem> OrderByItems,
+                        LimitClause Limit
+                        ))Visit(child);
 
                     // WITH will mask out any entities from MATCH that was not explicity returned
                     // get a list of entities exposed from current query part and leave it for next query part (if any)
@@ -779,20 +775,20 @@ namespace openCypherTranspiler.openCypherParser.AST
                     //    WITH u as u2
                     //    MATCH (u)-[:some_rel]-(:some_node) <-- current query part, u is not the same u in previous MATCH but a new node
                     //    ...
-                    var projectionExprs = withResult.ReturnItems ?? throw new TranspilerSyntaxErrorException($"Expecting a valid list of items to be returned: {child.GetText()}");
-                    var partQueryTree = new PartialQueryTreeNode()
+                    var projectionExprs = withResult.ReturnItems ?? 
+                        throw new TranspilerSyntaxErrorException($"Expecting a valid list of items to be projected: {child.GetText()}");
+                    var partQueryTree = new PartialQueryNode()
                     {
                         PipedData = prevQueryPart,
                         ProjectedExpressions = projectionExprs,
-                        PostCondition = withResult.Condition,
+                        FilterExpression = withResult.Condition,
                         IsDistinct = withResult.IsDistinct,
-                        MatchData = null,
+                        MatchData = null, // in this implementation, we do not put MATCH clause and WITH clause into one query part
+                        IsImplicitProjection = false, // indication this is a WITH/RETURN with explicity projection
                         CanChainNonOptionalMatch = true,
-                        IsImplicitProjection = false,
-                        LimitExpression = withResult.LimitItems,
-                        OrderByExpression = withResult.OrderByItems,
+                        Limit = withResult.Limit,
+                        OrderByClause = withResult.OrderByItems,
                     };
-
 
                     // propagate the entity types (node/edge, if possible EntityName as well) to the list of return items that 
                     // are direct exposure of entities
@@ -805,13 +801,14 @@ namespace openCypherTranspiler.openCypherParser.AST
                         GetEntitiesFromReturnBodyWithAliasApplied(prevQueryPart.ProjectedExpressions)
                         );
 
-                    // set state for next clause
                     prevQueryPart = partQueryTree;
                 }
                 else if (child is CypherParser.OC_SinglePartQueryContext) // (ReadingClauses)* RETURN
                 {
                     Debug.Assert(prevQueryPart != null);
+
                     queryNode = ConstructSingleQuery(child as CypherParser.OC_SinglePartQueryContext, prevQueryPart);
+                    prevQueryPart = null;
                 }
                 else if (child is CypherParser.OC_UpdatingClauseContext)
                 {
@@ -1139,20 +1136,16 @@ namespace openCypherTranspiler.openCypherParser.AST
         {
             _logger?.LogVerbose("{0}: {1}", "VisitOC_With", context.GetText());
             // with can come with WITH <expr>, ... or WITH <expr> WHERE <expr>
-            // return valuetuple type:
-            //  ( IsDistinct(bool), ReturnItems(IList<QueryExpressionWithAlias>), Condition(QueryExpression) )
 
             var isDistinct = IsContextContainsTextToken(context, "DISTINCT");
 
             Debug.Assert(context.oC_ReturnBody() != null);
             var returnBodyResult = ((
                 IList<QueryExpressionWithAlias> ReturnItems,
-                IList<QueryExpressionOrderBy> OrderByItems,
-                IList<QueryExpressionLimit> LimitItems))Visit(context.oC_ReturnBody());
+                IList<SortItem> OrderByItems,
+                LimitClause Limit))Visit(context.oC_ReturnBody());
 
             var queryExprs = returnBodyResult.ReturnItems ?? throw new TranspilerInternalErrorException("Parsing oC_ReturnBody");
-            var orderByExprs = returnBodyResult.OrderByItems;
-            var limitExprs = returnBodyResult.LimitItems;
 
             QueryExpression condExpr = null;
             if (context.oC_Where() != null)
@@ -1160,33 +1153,40 @@ namespace openCypherTranspiler.openCypherParser.AST
                 condExpr = Visit(context.oC_Where()) as QueryExpression ?? throw new TranspilerInternalErrorException("Parsing oC_Where");
             }
 
-            return (IsDistinct: isDistinct, ReturnItems: queryExprs, Conditions: condExpr, OrderByItems: orderByExprs, LimitItems: limitExprs);
+            return (
+                IsDistinct: isDistinct, 
+                ReturnItems: queryExprs, 
+                Conditions: condExpr, 
+                OrderByItems: returnBodyResult.OrderByItems, 
+                Limit: returnBodyResult.Limit
+                );
         }
 
         public override object VisitOC_Return([NotNull] CypherParser.OC_ReturnContext context)
         {
             _logger?.LogVerbose("{0}: {1}", "VisitOC_Return", context.GetText());
-            // returns valuetuple type:
-            //  ( IsDistinct(bool), ReturnItems(IList<QueryExpressionWithAlias>) )
+
             var returnBody = context.oC_ReturnBody();
 
             bool isDistinct = IsContextContainsTextToken(context, "DISTINCT");
 
             var returnBodyResult = ((
                             IList<QueryExpressionWithAlias> ReturnItems,
-                            IList<QueryExpressionOrderBy> OrderByItems,
-                            IList<QueryExpressionLimit> LimitItems))Visit(returnBody);
+                            IList<SortItem> OrderByItems,
+                            LimitClause Limit))Visit(returnBody);
 
-            return (IsDistinct: isDistinct,
+            return (
+                IsDistinct: isDistinct,
                 ReturnItems: returnBodyResult.ReturnItems,
                 OrderByItems: returnBodyResult.OrderByItems,
-                LimitItems: returnBodyResult.LimitItems);
+                Limit: returnBodyResult.Limit
+                );
         }
 
         public override object VisitOC_ReturnItems([NotNull] CypherParser.OC_ReturnItemsContext context)
         {
             _logger?.LogVerbose("{0}: {1}", "VisitOC_ReturnItems", context.GetText());
-            // returns IList<QueryExpressionWithAlias>()
+
             var expressions = new List<QueryExpressionWithAlias>();
 
             for (int i = 0; i < context.ChildCount; i++)
@@ -1977,14 +1977,14 @@ namespace openCypherTranspiler.openCypherParser.AST
             _logger?.LogVerbose("{0}: {1}", "VisitOC_Order", context.GetText());
 
             Debug.Assert(context.oC_SortItem() != null);
-            var queryExprsOrderBy = new List<QueryExpressionOrderBy>();
+            var queryExprsOrderBy = new List<SortItem>();
 
             for (int i = 0; i < context.ChildCount; i++)
             {
                 var child = context.GetChild(i);
                 if (child is CypherParser.OC_SortItemContext && child != null)
                 {
-                    var queryExpr = Visit(child) as QueryExpressionOrderBy;
+                    var queryExpr = Visit(child) as SortItem;
                     queryExprsOrderBy.Add(queryExpr);
                 }
             }
@@ -1997,18 +1997,16 @@ namespace openCypherTranspiler.openCypherParser.AST
 
             var expr = Visit(context.oC_Expression()) as QueryExpression;
             bool isDescending = IsContextContainsTextToken(context, "DESC") || IsContextContainsTextToken(context, "DESCENDING");
-            string alias = expr.GetChildrenQueryExpressionType<QueryExpressionProperty>().First().VariableName;
-            return new QueryExpressionOrderBy()
+            return new SortItem()
             {
                 IsDescending = isDescending,
-                InnerExpression = expr,
-                Alias = alias,
+                InnerExpression = expr
             };
         }
         public override object VisitOC_Limit([NotNull] CypherParser.OC_LimitContext context)
         {
             _logger?.LogVerbose("{0}: {1}", "VisitOC_Limit", context.GetText());
-            var exprLimit = new QueryExpressionLimit();
+            var exprLimit = new LimitClause();
             if (context.oC_Expression() != null)
             {
                 var expr = Visit(context.oC_Expression()) as QueryExpression;
@@ -2019,35 +2017,33 @@ namespace openCypherTranspiler.openCypherParser.AST
         public override object VisitOC_ReturnBody([NotNull] CypherParser.OC_ReturnBodyContext context)
         {
             _logger?.LogVerbose("{0}: {1}", "VisitOC_ReturnBody", context.GetText());
-            // add specific implementation about visiting return body
 
-            var aliasList = new List<QueryExpressionWithAlias>();
-            var orderList = new List<QueryExpressionOrderBy>();
-            var limitList = new List<QueryExpressionLimit>();
-            for (int i = 0; i < context.ChildCount; i++)
+            var projectionExprList = new List<QueryExpressionWithAlias>();
+            IList<SortItem> sortItems = null;
+            LimitClause limit = null;
+
+            // Get returned items: at least one RETURN should've enforced by the generated parser
+            Debug.Assert(context.oC_ReturnItems() != null);
+            var aliasResult = Visit(context.oC_ReturnItems()) as IList<QueryExpressionWithAlias>;
+            projectionExprList.AddRange(aliasResult);
+
+            // Optional OrderBy clause
+            if (context.oC_Order() != null)
             {
-                var child = context.GetChild(i);
-
-                if (child is CypherParser.OC_ReturnItemsContext)
-                {
-                    var aliasResult = Visit(child) as IList<QueryExpressionWithAlias>;
-                    aliasList.AddRange(aliasResult);
-                }
-                else if (child is CypherParser.OC_OrderContext)
-                {
-                    var orderResult = Visit(child) as IList<QueryExpressionOrderBy>;
-                    orderList.AddRange(orderResult);
-                }
-                else if (child is CypherParser.OC_LimitContext)
-                {
-                    var limitResult = Visit(child) as QueryExpressionLimit;
-                    limitList.Add(limitResult);
-                }
+                sortItems = Visit(context.oC_Order()) as IList<SortItem> ?? throw new TranspilerInternalErrorException("Parsing oC_Order");
             }
+            
+            // Optional limit clause
+            if (context.oC_Limit() != null)
+            {
+                limit = Visit(context.oC_Limit()) as LimitClause ?? throw new TranspilerInternalErrorException("Parsing oC_Limit");
+            }
+
             return (
-                ReturnItems: aliasList as IList<QueryExpressionWithAlias>,
-                OrderByItems: orderList as IList<QueryExpressionOrderBy>,
-                LimitItems: limitList as IList<QueryExpressionLimit>);
+                ReturnItems: projectionExprList as IList<QueryExpressionWithAlias>,
+                OrderByItems: sortItems,
+                Limit: limit
+                );
         }
 
     }

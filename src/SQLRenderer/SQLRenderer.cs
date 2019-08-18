@@ -243,13 +243,20 @@ namespace openCypherTranspiler.SQLRenderer
             }
             public ExpressionRenderingContext(ExpressionRenderingContext ctx)
             {
-                ExpectConditionExpression = ctx.ExpectConditionExpression;
+                ExpectLogicalExpression = ctx.ExpectLogicalExpression;
                 EnclosingOperator = ctx.EnclosingOperator;
             }
-            public bool ExpectConditionExpression { get; set; } = false;
-            public ExpressionRenderingContext ModifyExpectConditionExpression(bool newVal)
+            public bool ExpectLogicalExpression { get; set; } = false;
+
+            /// <summary>
+            /// If in the current rendering context, a logical expression can be used (e.g. a > b)
+            /// If it is not expected, we need to convert it to bit type
+            /// </summary>
+            /// <param name="newVal"></param>
+            /// <returns></returns>
+            public ExpressionRenderingContext ModifyExpectLogicalExpression(bool newVal)
             {
-                ExpectConditionExpression = newVal;
+                ExpectLogicalExpression = newVal;
                 return this;
             }
             public LogicalOperator EnclosingOperator { get; set; }
@@ -627,14 +634,14 @@ namespace openCypherTranspiler.SQLRenderer
                 var exprTyped = expr as QueryExpressionBinary;
                 var opType = exprTyped.Operator.Type;
                 var exprCtxChild = new ExpressionRenderingContext(exprCtx)
-                    .ModifyExpectConditionExpression(opType == BinaryOperatorType.Logical);
+                    .ModifyExpectLogicalExpression(opType == BinaryOperatorType.Logical);
                 string exprText = RenderBinaryOperator(
                     exprTyped.Operator,
                     exprTyped.LeftExpression,
                     exprTyped.RightExpression,
                     exprCtxChild
                     );
-                if (!exprCtx.ExpectConditionExpression && 
+                if (!exprCtx.ExpectLogicalExpression && 
                     (opType == BinaryOperatorType.Comparison || opType == BinaryOperatorType.Logical))
                 {
                     return $"(CASE WHEN {exprText} THEN CAST(1 AS bit) ELSE CAST(0 AS bit) END)";
@@ -781,10 +788,10 @@ namespace openCypherTranspiler.SQLRenderer
             }
 
             codeSnip.Append("CASE ");
-            Debug.Assert(exprCtx.ExpectConditionExpression == false);
+            Debug.Assert(exprCtx.ExpectLogicalExpression == false);
             foreach (var alterExpr in caseAlternatives)
             {
-                codeSnip.Append($"WHEN {RenderExpression(alterExpr.WhenExpression, new ExpressionRenderingContext(exprCtx).ModifyExpectConditionExpression(true))} ");
+                codeSnip.Append($"WHEN {RenderExpression(alterExpr.WhenExpression, new ExpressionRenderingContext(exprCtx).ModifyExpectLogicalExpression(true))} ");
                 codeSnip.Append($"THEN {RenderCaseValueExpression(targetType, alterExpr.ThenExpression, exprCtx)}");
             }
             if (elseCondition != null)
@@ -799,16 +806,62 @@ namespace openCypherTranspiler.SQLRenderer
             return codeSnip.ToString();
         }
 
+
+        private string RenderFilterExpression(QueryExpression filterExpr, LogicalOperator enclosingOp, int depth)
+        {
+            // Render just the WHERE part
+            var codeSnip = new StringBuilder();
+            var condText = RenderExpression(
+                filterExpr,
+                new ExpressionRenderingContext()
+                {
+                    ExpectLogicalExpression = true, // SQL does not allow value type to be in WHERE condition
+                        EnclosingOperator = enclosingOp
+                });
+            codeSnip.AppendLine(depth, $"WHERE");
+            codeSnip.AppendLine(depth + 1, $"{condText}");
+
+            return codeSnip.ToString();
+        }
+
+        private string RenderOrderbyClause(IList<SortItem> orderByClause, LogicalOperator enclosingOp, int depth)
+        {
+            // Render just the Order By part
+            var codeSnip = new StringBuilder();
+
+            codeSnip.AppendLine(depth, $"ORDER BY");
+            var isFirstRowOrderBy = true;
+            foreach (var orderExpr in orderByClause)
+            {
+                bool isDescending = orderExpr.IsDescending;
+                var exprText = RenderExpression(
+                    orderExpr.InnerExpression,
+                    new ExpressionRenderingContext()
+                    {
+                        ExpectLogicalExpression = false,
+                        EnclosingOperator = enclosingOp
+                    });
+                codeSnip.AppendLine(depth + 1, $"{(isFirstRowOrderBy ? "" : ", ")}{exprText} {(isDescending ? "DESC" : "ASC")}");
+                isFirstRowOrderBy = false;
+            }
+
+            return codeSnip.ToString();
+        }
+
         private string RenderProjection(ProjectionOperator prjOp, int depth)
         {
+            // Renders a Projection operator, or a Projection + Selection operator if applicable
             var codeSnip = new StringBuilder();
             
-            // expand output schema
             var allColsToOutput = ExpandSchema(prjOp.OutputSchema);
             var allOutputEntities = prjOp.OutputSchema.Where(f => f is EntityField).Cast<EntityField>();
             var allOutputSingleFields = prjOp.OutputSchema.Where(f => f is SingleField).Cast<SingleField>();
+
+            // look ahead one more operator - if it is selection operator we will collapse with the projection
             var preCond = prjOp.InOperator as SelectionOperator;
-            var topXVal = preCond?.LimitExpressions?.FirstOrDefault()?.RowCount;
+            var topXVal = preCond?.Limit?.RowCount;
+            // extra debug check: schema has not changed by selection operator (which should have been guaranteed by logical pan)
+            Debug.Assert(preCond == null || preCond.InputSchema.Count == preCond.OutputSchema.Count && preCond.OutputSchema.Count == prjOp.InputSchema.Count);
 
             codeSnip.AppendLine(depth, $"SELECT{(prjOp.IsDistinct ? " DISTINCT" : "")}{(topXVal.HasValue ? $" TOP {topXVal.Value}" : "")}");
 
@@ -865,7 +918,7 @@ namespace openCypherTranspiler.SQLRenderer
                     expr,
                     new ExpressionRenderingContext()
                     {
-                        ExpectConditionExpression = false,
+                        ExpectLogicalExpression = false,
                         EnclosingOperator = prjOp
                     });
                 codeSnip.AppendLine(depth + 1, $"{(!isFirstRow ? ", " : " ")}{exprText} AS {field.FieldAlias}");
@@ -877,28 +930,19 @@ namespace openCypherTranspiler.SQLRenderer
             }
 
             codeSnip.AppendLine(depth, $"FROM (");
+
             
+            // collaspe the selection with the current projection if we can
             if (preCond != null)
             {
                 var prevOp = preCond.InOperator;
                 codeSnip.AppendLine(RenderLogicalOperator(prevOp, depth + 1));
                 codeSnip.AppendLine(depth, $") AS _proj");
 
-                // if there's precondition, render it too
-                // WHERE clause specifically
+                // if there is any filtering, render it as WHERE
                 if (preCond?.FilterExpression != null)
                 {
-                    // Assert that schema has not changed and matches
-                    Debug.Assert(preCond.InputSchema.Count == preCond.OutputSchema.Count && preCond.OutputSchema.Count == prjOp.InputSchema.Count);
-                    var condText = RenderExpression(
-                        preCond.FilterExpression,
-                        new ExpressionRenderingContext()
-                        {
-                            ExpectConditionExpression = true, // SQL does not allow value type to be in WHERE condition
-                            EnclosingOperator = preCond
-                        });
-                    codeSnip.AppendLine(depth, $"WHERE");
-                    codeSnip.AppendLine(depth+1, $"{condText}");
+                    codeSnip.AppendLine(depth, RenderFilterExpression(preCond.FilterExpression, preCond, depth));
                 }
             }
             else
@@ -919,31 +963,10 @@ namespace openCypherTranspiler.SQLRenderer
                 }
             }
 
-            // order by clause must have limit statement, otherwise, won't compile in scope
-            if (topXVal.HasValue && preCond.OrderByExpressions?.Count() > 0)
+            // render the optional ORDER BY
+            if ((preCond?.OrderByExpressions?.Count() ?? 0) > 0)
             {
-                // Assert that schema has not changed and matches
-                Debug.Assert(preCond.InputSchema.Count == preCond.OutputSchema.Count && preCond.OutputSchema.Count == prjOp.InputSchema.Count);
-
-                codeSnip.AppendLine(depth, $"ORDER BY");
-                var isFirstRowOrderBy = true;
-                foreach (var orderExpr in preCond.OrderByExpressions)
-                {
-                    bool isDescending = orderExpr.IsDescending;
-                    var childrenProperty = orderExpr.GetChildrenQueryExpressionType<QueryExpressionProperty>();
-                    foreach (var prop in childrenProperty)
-                    {
-                        var exprText = RenderExpression(
-                            prop, 
-                            new ExpressionRenderingContext()
-                            {
-                                ExpectConditionExpression = false,
-                                EnclosingOperator = preCond
-                            });
-                        codeSnip.AppendLine(depth+1, $"{(isFirstRowOrderBy ? "" : ", ")}{exprText} {(isDescending ? "DESC" : "ASC")}");
-                        isFirstRowOrderBy = false;
-                    }
-                }
+                codeSnip.Append(RenderOrderbyClause(preCond.OrderByExpressions, preCond, depth));
             }
 
             return codeSnip.ToString();
@@ -960,9 +983,10 @@ namespace openCypherTranspiler.SQLRenderer
             var allColsToOutput = ExpandSchema(condOp.OutputSchema);
             var allOutputEntities = condOp.OutputSchema.Where(f => f is EntityField).Cast<EntityField>();
             var allOutputSingleFields = condOp.OutputSchema.Where(f => f is SingleField).Cast<SingleField>();
+            var topXVal = condOp.Limit?.RowCount;
             bool isFirstRow = true;
 
-            codeSnip.AppendLine(depth, $"SELECT");
+            codeSnip.AppendLine(depth, $"SELECT {(topXVal.HasValue ? $" TOP {topXVal.Value}" : "")}");
 
             // project entities and join keys need to be flowed
             foreach (var ent in allOutputEntities)
@@ -1004,16 +1028,18 @@ namespace openCypherTranspiler.SQLRenderer
             codeSnip.AppendLine(RenderLogicalOperator(condOp.InOperator, depth+1));
             codeSnip.AppendLine(depth, $") AS _select");
 
-            var condText = RenderExpression(
-                condOp.FilterExpression,
-                new ExpressionRenderingContext()
-                {
-                    ExpectConditionExpression = true, // SQL does not allow value type to be in WHERE condition
-                    EnclosingOperator = condOp
-                });
-            codeSnip.AppendLine(depth, $"WHERE");
-            codeSnip.AppendLine(depth+1, $"{condText}");
-            
+            // if there is any filtering, render it as WHERE
+            if (condOp.FilterExpression != null)
+            {
+                codeSnip.AppendLine(depth, RenderFilterExpression(condOp.FilterExpression, condOp, depth));
+            }
+
+            // render the optional ORDER BY
+            if ((condOp.OrderByExpressions?.Count() ?? 0) > 0)
+            {
+                codeSnip.Append(RenderOrderbyClause(condOp.OrderByExpressions, condOp, depth));
+            }
+
             return codeSnip.ToString();
         }
 

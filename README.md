@@ -11,8 +11,13 @@ This library has three main components:
 * A logic planner transforms the AST into relational query logical plan similar to the [Relational Algebra](https://en.wikipedia.org/wiki/Relational_algebra);
 * A query code renderer produces the actual query code from the logical plan. In this repository, we provides a T-SQL renderer.
 
+The above components form a pipeline where the openCypher query and the graph schema is fed to the parser and the transpiled query is the output from the code renderer:
+
+![openCypher Transpiler pipeline](docs/transpiler.svg)
+
 The library, written in [.Net Core](https://dotnet.microsoft.com/download), is cross-platform.
 
+[![Build Status](https://dev.azure.com/ms/openCypherTranspiler/_apis/build/status/microsoft.openCypherTranspiler?branchName=master)](https://dev.azure.com/ms/openCypherTranspiler/_build/latest?definitionId=191&branchName=master)
 
 ## Using the library
 
@@ -37,7 +42,7 @@ To run the tests, simply run under the project root folder:
 dotnet test
 ```
 
-## Roadmap
+## Road map
 
 ### Current work in Progress
 * Publish NuGet packages

@@ -17,6 +17,10 @@ using openCypherTranspiler.LogicalPlanner.Utils;
 
 namespace openCypherTranspiler.LogicalPlanner
 {
+    /// <summary>
+    /// This class turns abstract syntax tree into logical plan for
+    /// further transpiling (rendering) into a relational query language
+    /// </summary>
     public class LogicalPlan
     {
         private ILoggable _logger;
@@ -42,7 +46,7 @@ namespace openCypherTranspiler.LogicalPlanner
         /// <param name="treeRoot"></param>
         /// <param name="graphDef"></param>
         /// <returns></returns>
-        public static LogicalPlan ProcessQueryTree(QueryTreeNode treeRoot, IGraphSchemaProvider graphDef, ILoggable logger = null)
+        public static LogicalPlan ProcessQueryTree(QueryNode treeRoot, IGraphSchemaProvider graphDef, ILoggable logger = null)
         {
             var logicalPlanner = new LogicalPlan(logger);
             var allLogicalOps = new HashSet<LogicalOperator>();
@@ -113,7 +117,7 @@ namespace openCypherTranspiler.LogicalPlanner
         /// </summary>
         /// <param name="treeNode"></param>
         /// <returns></returns>
-        private LogicalOperator CreateLogicalTree(QueryTreeNode treeNode, ISet<LogicalOperator> allLogicalOps)
+        private LogicalOperator CreateLogicalTree(QueryNode treeNode, ISet<LogicalOperator> allLogicalOps)
         {
             // Example of logical tree to be created:
             //   MATCH (a:n1)-[b:r1]-(c:n2)
@@ -142,24 +146,24 @@ namespace openCypherTranspiler.LogicalPlanner
 
 
             // inorder walk of the tree to evaulate individual queries
-            if (treeNode is SingleQueryTreeNode)
+            if (treeNode is SingleQueryNode)
             {
                 // single query
-                return CreateLogicalTree(treeNode as SingleQueryTreeNode, allLogicalOps);
+                return CreateLogicalTree(treeNode as SingleQueryNode, allLogicalOps);
             }
             else
             {
-                Debug.Assert(treeNode is InfixQueryTreeNode);
-                return CreateLogicalTree(treeNode as InfixQueryTreeNode, allLogicalOps);
+                Debug.Assert(treeNode is InfixQueryNode);
+                return CreateLogicalTree(treeNode as InfixQueryNode, allLogicalOps);
             }
         }
 
         /// <summary>
-        /// Create logical oeprator tree for sub-tree node type InfixQueryTreeNode
+        /// Create logical oeprator tree for sub-tree node type InfixQueryNode
         /// </summary>
         /// <param name="treeNode"></param>
         /// <returns></returns>
-        private BinaryLogicalOperator CreateLogicalTree(InfixQueryTreeNode treeNode, ISet<LogicalOperator> allLogicalOps)
+        private BinaryLogicalOperator CreateLogicalTree(InfixQueryNode treeNode, ISet<LogicalOperator> allLogicalOps)
         {
             var left = CreateLogicalTree(treeNode.LeftQueryTreeNode, allLogicalOps);
             var right = CreateLogicalTree(treeNode.RightQueryTreeNode, allLogicalOps);
@@ -170,10 +174,10 @@ namespace openCypherTranspiler.LogicalPlanner
             SetOperator.SetOperationType op;
             switch (treeNode.Operator)
             {
-                case InfixQueryTreeNode.QueryOperator.Union:
+                case InfixQueryNode.QueryOperator.Union:
                     op = SetOperator.SetOperationType.Union;
                     break;
-                case InfixQueryTreeNode.QueryOperator.UnionAll:
+                case InfixQueryNode.QueryOperator.UnionAll:
                     op = SetOperator.SetOperationType.UnionAll;
                     break;
                 default:
@@ -189,114 +193,246 @@ namespace openCypherTranspiler.LogicalPlanner
         }
 
         /// <summary>
-        /// Create logical operator for AST node type SingleQueryTreeNode
+        /// Create logical operator tree for projection expressions with optional orderby/limit/filtering
+        /// </summary>
+        /// <param name="pipedData"></param>
+        /// <param name="isDistinct"></param>
+        /// <param name="projExprs"></param>
+        /// <param name="limitClause"></param>
+        /// <param name="orderByClause"></param>
+        /// <param name="filterExpr"></param>
+        /// <param name="allLogicalOps"></param>
+        /// <returns></returns>
+        private LogicalOperator CreateLogicalTree(LogicalOperator pipedData, bool isDistinct, 
+            IList<QueryExpressionWithAlias> projExprs, 
+            IList<QueryExpressionWithAlias> implicitProjExprs,
+            LimitClause limitClause, IList<SortItem> orderByClause, QueryExpression filterExpr, 
+            ISet<LogicalOperator> allLogicalOps)
+        {
+            LogicalOperator lastOperator = pipedData;
+            var hasAggregationExpression = projExprs
+                .Any(n => n.GetChildrenQueryExpressionType<QueryExpressionAggregationFunction>().Count() > 0);
+            var hasOrderByLimit = (limitClause != null || (orderByClause?.Count() ?? 0) > 0);
+            var hasWhere = (filterExpr != null);
+            var removeExtraImplicitFields = false;
+
+            //  If there is "DISTINCT" keyword, it is equivalent to have an extra "WITH" clause where only explicitly projected
+            //  variables and entities are kept valid for downstream ORDER BY, WHERE clauses.
+            //
+            //  Example: 
+            //  MATCH (a)-[]->(b)
+            //  WITH DISTINCT a.Name as Name, b.Title as Title
+            //  ORDER BY Name, Title
+            //  WHERE Name <> "Tom"
+            //  RETURN Name, Title
+            //  ** ORDER BY/WHERE can only refer Name, Title as there is a DISTINCT
+            //
+            //  if no distinct 
+            //  MATCH (a)-[]->(b)
+            //  WITH a.Name as Name, b.Title as Title
+            //  ORDER BY a.Tagline, n.Price
+            //  WHERE Name <> "Tom"
+            //  RETURN Name, Title
+            //  ** ORDER BY/WHERE can refer any field in a and b even though only Name and Title
+            //     were explicitly projected
+            //
+
+            var extraImplicitProjections = implicitProjExprs?.Where(n => projExprs.All(p => p.Alias != n.Alias));
+
+            if ((hasOrderByLimit || hasWhere) &&
+                !(isDistinct || hasAggregationExpression) &&
+                (extraImplicitProjections?.Count() ?? 0) > 0)
+            {
+                // If we need to expose the implicit projected entities from previous query parts,
+                // and the circumstance allows it (i.e. when DISTINCT/aggregation function was not used)
+                // we add extra implicit fields, and will remove it after ORDER BY/WHERE is processed
+                var extendedProjectionExprs = projExprs.Union(extraImplicitProjections).ToList();
+                lastOperator = CreateLogicalTree(extendedProjectionExprs, isDistinct /*false*/, lastOperator, allLogicalOps);
+                removeExtraImplicitFields = true;
+            }
+            else
+            {
+                lastOperator = CreateLogicalTree(projExprs, isDistinct, lastOperator, allLogicalOps);
+            }
+
+            // Optional OrderBy / Limit
+            if (hasOrderByLimit)
+            {
+                lastOperator = CreateLogicalTree(orderByClause, limitClause, lastOperator, allLogicalOps);
+            }
+
+            // Optional WHERE
+            if (filterExpr != null)
+            {
+                // without match, we can just apply filtering if needed (e.g. WITH ... WHERE ...)
+                lastOperator = CreateLogicalTree(filterExpr, lastOperator, allLogicalOps);
+            }
+
+            // do a simple projection to remove extra implicitly projected fields if applies
+            if (removeExtraImplicitFields)
+            {
+                // since all the schema was already mapped to the target aliases in the previous projection operators, only 
+                // simple direct mapping needed, namely 'a AS a'. The gold here is just to remove extra that were not in the
+                // original projected fields
+                var trimmedSimpleProjExprs = projExprs.Select(n =>
+                    new QueryExpressionWithAlias
+                    {
+                        Alias = n.Alias,
+                        InnerExpression = new QueryExpressionProperty()
+                        {
+                            VariableName = n.Alias,
+                            DataType = null,
+                            Entity = n.TryGetDirectlyExposedEntity(),
+                            PropertyName = null
+                        }
+                    }
+                ).ToList();
+                lastOperator = CreateLogicalTree(trimmedSimpleProjExprs, false /*distinct should've applied no not needed here*/, lastOperator, allLogicalOps);
+            }
+
+            return lastOperator;
+        }
+
+        /// <summary>
+        /// Create logical operator for AST node type SingleQueryNode
         /// </summary>
         /// <param name="treeNode"></param>
         /// <returns></returns>
-        private LogicalOperator CreateLogicalTree(SingleQueryTreeNode treeNode, ISet<LogicalOperator> allLogicalOps)
+        private LogicalOperator CreateLogicalTree(SingleQueryNode treeNode, ISet<LogicalOperator> allLogicalOps)
         {
-            var stack = new Stack<PartialQueryTreeNode>();
-            PartialQueryTreeNode lastVisited = treeNode.PipedData;
-            
+            // Start from the leaf node query part to create logical plan for the single query
+            var stack = new Stack<PartialQueryNode>();
+            PartialQueryNode lastVisited = treeNode.PipedData;
             while (lastVisited != null)
             {
                 stack.Push(lastVisited);
                 lastVisited = lastVisited.PipedData;
             }
 
-            // maintain a list of query parts that we may collapse for optimization
-            var pureMatchChainQueries = new List<PartialQueryTreeNode>();
-            // maintain a pointer to the last logical operator that need to chained into next operator to be created
             LogicalOperator lastOperator = null;
-            PartialQueryTreeNode curNode = null;
-            PartialQueryTreeNode prevNode = null;
-            var finalProjectedExprs = treeNode.EntityPropertySelected;
+            PartialQueryNode lastNode = null;
             while (stack.Any())
             {
-                prevNode = curNode;
-                curNode = stack.Pop();
-                lastOperator = CreateLogicalTree(curNode, lastOperator, allLogicalOps, prevNode);
+                var curNode = stack.Pop();
+                lastOperator = CreateLogicalTree(curNode, lastOperator, allLogicalOps, lastNode);
+                lastNode = curNode;
             }
 
-            // chain with another selection operator there are ORDER BY + LIMIT combination clause 
-            // Single ORDER BY or Single LIMIT will not be compiled in SCOPE, skipped here
-            if (treeNode.EntityRowsLimit?.Count() > 0 && treeNode.EntityPropertyOrderBy?.Count() > 0)
+            // Parser should guarantee the case we have at least one clause before RETURN
+            Debug.Assert(lastOperator != null);
+            // Parser should catch the case that at least one projected field
+            Debug.Assert((treeNode.EntityPropertySelected?.Count ?? 0) > 0);
+
+            var finalProjectedExprs = treeNode.EntityPropertySelected;
+
+            // Special to RETURN clause: block any attempt to return entities, as none of our downstream renderer
+            // support it right now
+            if (finalProjectedExprs.Any(p => p.TryGetDirectlyExposedEntity() != null))
             {
-                var limitExpr = treeNode.EntityRowsLimit;
-                var orderExpr = treeNode.EntityPropertyOrderBy;
-                lastOperator = CreateLogicalTree(orderExpr, limitExpr, lastOperator, allLogicalOps);
+                throw new TranspilerNotSupportedException
+                    ($"Please returning fields only. Returning node or relationship entity {treeNode.EntityPropertySelected.First(p => p.TryGetDirectlyExposedEntity() != null).Alias}");
+            }
 
-                // TODO: Add more expression that came from previous partial query tree node
-                var appendedProjExpr = treeNode.EntityPropertySelected;
-                var newProjExpr = curNode?.ProjectedExpressions?.Where(n => appendedProjExpr.All(p => p.Alias != n.Alias));
+            lastOperator = CreateLogicalTree(
+                    lastOperator,
+                    treeNode.IsDistinct,
+                    finalProjectedExprs,
+                    lastNode?.ProjectedExpressions,
+                    treeNode.Limit,
+                    treeNode.OrderByClause,
+                    null, // RETURN has no WHERE conditions
+                    allLogicalOps
+                    );
 
-                // flag true if any selected properties has aggregation function.
-                var hasAggregationExpression = false;
-                if (treeNode.EntityPropertySelected.Any(n => n.GetChildrenQueryExpressionType<QueryExpressionAggregationFunction>().Count() > 0))
+            return lastOperator;
+        }
+
+        /// <summary>
+        /// Create logical operators for a partial query part
+        /// </summary>
+        /// <param name="treeNode">the current query part</param>
+        /// <param name="pipedData"></param>
+        /// <param name="allLogicalOps"></param>
+        /// <param name="previousNode">the query part immediate before the current query part (treeNode) 
+        ///     that may contains expressions that can be accessed by clauses in this query part</param>
+        /// <returns></returns>
+        private LogicalOperator CreateLogicalTree(PartialQueryNode treeNode, LogicalOperator pipedData, ISet<LogicalOperator> allLogicalOps, PartialQueryNode previousNode)
+        {
+            LogicalOperator lastOperator = pipedData;
+
+            // parser tree does not mix MATCH and WITH into a single query part today
+            Debug.Assert(treeNode.MatchData == null || treeNode.IsImplicitProjection == true);
+
+            if (treeNode.MatchData != null)
+            {
+                // the query part contains a MATCH clause
+                // since the parser tree guarantees no explicit projection (by WITH/RETURN), we do not need to handle things like 
+                // DISTINCT or ORDER BY as they appears only wtih WITH/RETURN
+                // we do, however, need to handle WHERE
+
+                var isOptionalMatch = treeNode.MatchData.MatchPatterns.Any(p => p.IsOptionalMatch);
+                Debug.Assert(treeNode.MatchData.MatchPatterns.All(p => p.IsOptionalMatch == isOptionalMatch));
+
+                if (treeNode.FilterExpression != null)
                 {
-                    hasAggregationExpression = true;
-                }
-
-                appendedProjExpr = (newProjExpr == null || treeNode.IsDistinct || hasAggregationExpression? appendedProjExpr : appendedProjExpr.Union(newProjExpr).ToList());
-                lastOperator = CreateLogicalTree(appendedProjExpr, treeNode.IsDistinct, lastOperator, allLogicalOps);
-
-                finalProjectedExprs = finalProjectedExprs.Select(n =>
-                {
-                    var property = n.GetChildrenQueryExpressionType<QueryExpressionProperty>().FirstOrDefault();
-                    if (property?.Entity == null)
+                    // with WHERE conditions, optional match requires a fork to apply filtering first and then rejoin with piped data, 
+                    // where non-optional doesn't require it
+                    // e.g. MATCH ... OPTIONAL MATCH ... WHERE ... WITH/RETURN ...
+                    if (isOptionalMatch)
                     {
-                        return new QueryExpressionWithAlias
+                        // apply filtering conditions to the optional match pattern ...
+                        var modifiedMatch = new MatchClause()
                         {
-                            Alias = n.Alias,
-                            InnerExpression = new QueryExpressionProperty()
-                            {
-                                VariableName = n.Alias,
-                                DataType = null,
-                                Entity = null,
-                                PropertyName = null
-                            }
+                            MatchPatterns = treeNode.MatchData.MatchPatterns.Select(p => new MatchPattern(false, p)).ToList()
                         };
+                        var omOperator = CreateLogicalTree(modifiedMatch, lastOperator, allLogicalOps);
+                        var condOmOperator = CreateLogicalTree(treeNode.FilterExpression, omOperator, allLogicalOps);
+
+                        var leftEntityAliases = lastOperator.OutputSchema
+                            .Where(f => f is EntityField).Select(f => (f as EntityField).FieldAlias);
+                        var explicitlyMatchedAliasesToJoinWithLeft = modifiedMatch.AllEntitiesOrdered
+                            .Select(e => e.Alias)
+                            .Where(a => a != null)
+                            .Intersect(leftEntityAliases);
+                        // ... then left outter join back with the piped data
+                        lastOperator = CreateLogicalTree(lastOperator, condOmOperator, explicitlyMatchedAliasesToJoinWithLeft, true, allLogicalOps);
                     }
                     else
                     {
-                        return n;
+                        // inner join with match data
+                        lastOperator = CreateLogicalTree(treeNode.MatchData, lastOperator, allLogicalOps);
+                        // apply filtering
+                        lastOperator = CreateLogicalTree(treeNode.FilterExpression, lastOperator, allLogicalOps);
                     }
-                }).ToList();
-
-                // if distinct case, we currently don't support entity field in the order by statement.
-                // For example:
-                //   RETURN DISTINCT a.Name as Name, b.Address as Address
-                //   ORDER BY a.Name
-                //   LIMIT 10
-                if ((treeNode.IsDistinct || hasAggregationExpression) && orderExpr.Any(n =>
-                 {
-                     var properties = n.GetChildrenQueryExpressionType<QueryExpressionProperty>();
-                     if(properties != null && properties.Any(k => k.PropertyName!=null && k.VariableName != null))
-                     {
-                         return true;
-                     }
-                     return false;
-                 }))
-                {
-                    throw new TranspilerNotSupportedException("ORDER BY X.XXX under RETURN DISTINCT clause/RETURN with aggregation function");
                 }
-                
+                else
+                {
+                    // without filtering conditions, optional and non-optional match can join directly, and 
+                    // we only need to apply different join type
+                    // e.g. MATCH ... OPTIONAL MATCH ... WITH/RETURN ...
+                    lastOperator = CreateLogicalTree(treeNode.MatchData, lastOperator, allLogicalOps);
+                }
+
+                // apply the implicit project, where the expressions are carried fields plus named entities
+                lastOperator = CreateLogicalTree(treeNode.ProjectedExpressions, treeNode.IsDistinct, lastOperator, allLogicalOps);
             }
-
-            // add the final projection operator for the fields select in the wrapping Single Query tree node, which 
-            // has only Projection and PipedData
-            Debug.Assert(lastOperator != null);
-            Debug.Assert((treeNode.EntityPropertySelected?.Count ?? 0) > 0);
-
-            // Block the attempt to return entities as we don't support this anywhere today
-            if (treeNode.EntityPropertySelected.Any(p => p.TryGetDirectlyExposedEntity() != null))
+            else
             {
-                throw new TranspilerNotSupportedException
-                    ($"Query final return body returns the whole entity {treeNode.EntityPropertySelected.First(p => p.TryGetDirectlyExposedEntity() != null).Alias} instead of its fields");
-            }
+                // pure projection (WITH/RETURN)
+                // we will need to handle ORDER BY/LIMIT
 
-            var finalProjOperator = CreateLogicalTree(finalProjectedExprs, treeNode.IsDistinct, lastOperator, allLogicalOps);
-            return finalProjOperator;
+                lastOperator = CreateLogicalTree(
+                    lastOperator,
+                    treeNode.IsDistinct,
+                    treeNode.ProjectedExpressions,
+                    previousNode?.ProjectedExpressions,
+                    treeNode.Limit,
+                    treeNode.OrderByClause,
+                    treeNode.FilterExpression,
+                    allLogicalOps
+                    );
+            }
+            return lastOperator;
         }
 
         /// <summary>
@@ -323,8 +459,8 @@ namespace openCypherTranspiler.LogicalPlanner
         /// <param name="allLogicalOps"></param>
         /// <returns></returns>
         private LogicalOperator CreateLogicalTree(
-            IList<QueryExpressionOrderBy> orderExp, 
-            IList<QueryExpressionLimit> limitExp,
+            IList<SortItem> orderExp, 
+            LimitClause limitExp,
             LogicalOperator pipedData, 
             ISet<LogicalOperator> allLogicalOps)
         {
@@ -455,174 +591,6 @@ namespace openCypherTranspiler.LogicalPlanner
         }
 
         /// <summary>
-        /// Create logical operators for a partial query part
-        /// </summary>
-        /// <param name="treeNode"></param>
-        /// <param name="pipedData"></param>
-        /// <param name="allLogicalOps"></param>
-        /// <returns></returns>
-        private LogicalOperator CreateLogicalTree(PartialQueryTreeNode treeNode, LogicalOperator pipedData, ISet<LogicalOperator> allLogicalOps, PartialQueryTreeNode previousNode)
-        {
-            LogicalOperator lastOperator = pipedData;
-
-            if (treeNode.MatchData != null)
-            {
-                // comes with additional Match statements
-                var isOptionalMatch = treeNode.MatchData.MatchPatterns.Any(p => p.IsOptionalMatch);
-                Debug.Assert(treeNode.MatchData.MatchPatterns.All(p => p.IsOptionalMatch == isOptionalMatch));
-
-                if (treeNode.PostCondition != null)
-                {
-                    // with filtering conditions, optional match requires a fork to apply filtering first and then rejoin with piped data, 
-                    // where non-optional doesn't require it
-                    // e.g. MATCH ... OPTIONAL MATCH ... WHERE ... WITH/RETURN ...
-                    if (isOptionalMatch)
-                    {
-                        // apply filtering conditions to the optional match pattern then left outter join back with the piped data
-                        var modifiedMatch = new MatchDataSource()
-                        {
-                            MatchPatterns = treeNode.MatchData.MatchPatterns.Select(p => new MatchPattern(false, p)).ToList()
-                        };
-                        var omOperator = CreateLogicalTree(modifiedMatch, lastOperator, allLogicalOps);
-                        var condOmOperator = CreateLogicalTree(treeNode.PostCondition, omOperator, allLogicalOps);
-
-                        var leftEntityAliases = lastOperator.OutputSchema
-                            .Where(f => f is EntityField).Select(f => (f as EntityField).FieldAlias);
-                        var explicitlyMatchedAliasesToJoinWithLeft = modifiedMatch.AllEntitiesOrdered
-                            .Select(e => e.Alias)
-                            .Where(a => a != null)
-                            .Intersect(leftEntityAliases);
-                        lastOperator = CreateLogicalTree(lastOperator, condOmOperator, explicitlyMatchedAliasesToJoinWithLeft, true, allLogicalOps);
-                    }
-                    else
-                    {
-                        // join with match data
-                        lastOperator = CreateLogicalTree(treeNode.MatchData, lastOperator, allLogicalOps);
-                        // apply filtering
-                        lastOperator = CreateLogicalTree(treeNode.PostCondition, lastOperator, allLogicalOps);
-                    }
-                }
-                else
-                {
-                    // without filtering conditions, optional and non-optional match are processed similarly (except for the join type)
-                    // e.g. MATCH ... OPTIONAL MATCH ... WITH/RETURN ...
-                    lastOperator = CreateLogicalTree(treeNode.MatchData, lastOperator, allLogicalOps);
-                }
-                // Do projection
-                lastOperator = CreateLogicalTree(treeNode.ProjectedExpressions, treeNode.IsDistinct, lastOperator, allLogicalOps);
-            }
-            else
-            {
-                // Order By need to pair with limit in order to compilable in scope
-                var isValidOrderByClausePair = (treeNode.LimitExpression?.Count() > 0 && treeNode.OrderByExpression?.Count() > 0);
-                var isExtraCollectionProjectionNeeded = (treeNode.PostCondition != null || isValidOrderByClausePair);
-                var appendedProjExpr = treeNode.ProjectedExpressions;
-                var hasAggregationExpression = false;
-
-                if (treeNode.ProjectedExpressions.SelectMany(n => n.GetChildrenQueryExpressionType<QueryExpressionAggregationFunction>()).Count() > 0)
-                {
-                    hasAggregationExpression = true;
-                }
-
-                //  "DISTINCT" acted like another "WITH" clause: downstream ORDER BY, WHERE can only use field from WITH clause
-                //      if no DISTINCT, collect field information from previous tree node
-                //      if has DISTINCT, no need to collect from previous one for the behavior of DISTINCT descrived above
-                //  Example: 
-                //  WITH DISTINCT a.Name as Name, b.Title as Title
-                //  ORDER BY Name, Title
-                //  WHERE Name <> "Tom"
-                //  RETURN Name, Title
-                //  ** ORDER BY/WHERE can only refer Name, Title as there is a DISTINCT
-                //
-                //  if no distinct 
-                //  WITH a.Name as Name, b.Title as Title
-                //  ORDER BY a.Tagline, n.Price
-                //  WHERE Name <> "Tom"
-                //  RETURN Name, Title
-                //  ** ORDER BY/WHERE can refer any field in a and b
-
-
-                if (!treeNode.IsDistinct && previousNode != null && !hasAggregationExpression)
-                {
-                    var newProjExpr = previousNode.ProjectedExpressions.Where(n => appendedProjExpr.All(p =>p.Alias!= n.Alias));
-                    appendedProjExpr = (newProjExpr== null? appendedProjExpr: appendedProjExpr.Union(newProjExpr).ToList());
-                    lastOperator = CreateLogicalTree(appendedProjExpr, treeNode.IsDistinct, lastOperator, allLogicalOps);
-                }
-                else
-                {
-                    lastOperator = CreateLogicalTree(treeNode.ProjectedExpressions, treeNode.IsDistinct, lastOperator, allLogicalOps);
-                }
-
-                // Do trimming the non-entity field by removing redundant calculation and changed it to Alias AS Alias
-                // The reason for trimming: related calculation was already done in previous steps. Only need to refer the alias and return.
-                var trimmedProjExpr = appendedProjExpr.Select(n =>
-                {
-                    var property = n.GetChildrenQueryExpressionType<QueryExpressionProperty>().FirstOrDefault();
-                    if (property?.Entity == null)
-                    {
-                        return new QueryExpressionWithAlias
-                        {
-                            Alias = n.Alias,
-                            InnerExpression = new QueryExpressionProperty()
-                            {
-                                VariableName = n.Alias,
-                                DataType = null,
-                                Entity = null,
-                                PropertyName = null
-                            }
-                        };
-                    }
-                    else
-                    {
-                        return n;
-                    }
-                }).ToList();
-
-                // chain with another selection operator there are ORDER BY + LIMIT combination clause 
-                // Single ORDER BY or Single LIMIT will not be compiled in SCOPE, skipped here
-                if (isValidOrderByClausePair)
-                {
-                    var limitExpr = treeNode.LimitExpression;
-                    var orderExpr = treeNode.OrderByExpression;
-                    lastOperator = CreateLogicalTree(orderExpr, limitExpr, lastOperator, allLogicalOps);                 
-                    // projection operator "after order by" selection operator
-                    lastOperator = CreateLogicalTree(trimmedProjExpr, treeNode.IsDistinct, lastOperator, allLogicalOps);
-                }
-
-                if (treeNode.PostCondition != null)
-                {
-                    // without match, we can just apply filtering if needed (e.g. WITH ... WHERE ...)
-                    lastOperator = CreateLogicalTree(treeNode.PostCondition, lastOperator, allLogicalOps);
-                    // projection operator after "where" selection operator
-                    lastOperator = CreateLogicalTree(trimmedProjExpr, treeNode.IsDistinct, lastOperator, allLogicalOps);
-                }
-                // Do the last projection in the WITH statement.
-                // Since all the schema was already mapped to the target aliases in the previous projection operators, only direct mapping needed.
-                // target -> target
-                //      eg. a.Name as Name : Name -> Name
-                //          a as b: b -> b (at here 'a' can be a entity or can be a property.
-                var finalProjExpr = treeNode.ProjectedExpressions.Select(n => 
-                {
-                    var property = n.GetChildrenQueryExpressionType<QueryExpressionProperty>().FirstOrDefault();
-                    return new QueryExpressionWithAlias
-                    {
-                        Alias = n.Alias,
-                        InnerExpression = new QueryExpressionProperty()
-                        {
-                            VariableName = n.Alias,
-                            DataType = null,
-                            Entity = property?.Entity,
-                            PropertyName = null
-                        }
-                    };
-                }).ToList();
-
-            lastOperator = CreateLogicalTree(finalProjExpr, treeNode.IsDistinct, lastOperator, allLogicalOps);
-            }
-            return lastOperator;
-        }
-
-        /// <summary>
         /// This function takes 2 entities and returns in a determinstic order of their aliases:
         /// It guarantees that the order is that if node is the src of edge, then [node, edge]
         /// otherwise [edge, node]
@@ -678,7 +646,7 @@ namespace openCypherTranspiler.LogicalPlanner
         /// <param name="pipedData"></param>
         /// <param name="allLogicalOps"></param>
         /// <returns></returns>
-        private LogicalOperator CreateLogicalTree(MatchDataSource matchData, LogicalOperator pipedData, ISet<LogicalOperator> allLogicalOps)
+        private LogicalOperator CreateLogicalTree(MatchClause matchData, LogicalOperator pipedData, ISet<LogicalOperator> allLogicalOps)
         {
             // turn linear match patterns into logical operators
 
@@ -1055,12 +1023,11 @@ namespace openCypherTranspiler.LogicalPlanner
         }
 
         /// <summary>
-        /// Evaluate field data types for each operators' output schema (after data schema is bound)
+        /// Top down propagation of the data types of each fields in each operators' output schema
         /// </summary>
         private void PropagateDataTypes()
         {
-            // we go top down for each layers in the logical plan to propagate field's data types
-
+            // Going top down for each layers in the logical plan to propagate field's data types
             var allOperators = StartingOperators
                 .SelectMany(op => op.GetAllDownstreamOperatorsOfType<LogicalOperator>())
                 .Distinct()
@@ -1069,7 +1036,7 @@ namespace openCypherTranspiler.LogicalPlanner
 
             Debug.Assert(allOperators.First().All(op => op is StartLogicalOperator));
 
-            // We assume that first level is taken care off in previous stage (data binding)
+            // First level containers only start operators is taken care off in previous stage (data binding)
             // We start from second level and down to propagate data types
             foreach (var opGrp in allOperators.Skip(1))
             {
@@ -1078,7 +1045,8 @@ namespace openCypherTranspiler.LogicalPlanner
         }
 
         /// <summary>
-        /// Update the list of actual properties that got referenced for each entity field
+        /// Update the list of actual fields that got referenced for each entity reference
+        /// This helps to trim out unreferenced fields early in the logical plan tree
         /// </summary>
         private void UpdateActualFieldReferencesForEntityFields()
         {

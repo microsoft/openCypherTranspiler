@@ -7,7 +7,7 @@ using openCypherTranspiler.openCypherParser.AST;
 
 namespace openCypherTranspiler.openCypherParser.AST
 {
-    public static class QueryExpressionHelper
+    public static class QueryExpressionExtensions
     {
         /// <summary>
         /// If expr is a direct return of an entity, return it, otherwise, return null
