@@ -151,7 +151,7 @@ namespace openCypherTranspiler.LogicalPlanner
         /// <summary>
         /// Used by logic planner to propagate input schema
         /// </summary>
-        internal abstract void PropagateSchema();
+        internal abstract void PropagateDateTypesForSchema();
 
         /// <summary>
         /// Used by logic planner to update the list of ReferencedFields
@@ -168,7 +168,7 @@ namespace openCypherTranspiler.LogicalPlanner
             foreach (var field in OutputSchema.Where(f => f is EntityField).Cast<EntityField>())
             {
                 Debug.Assert(referredFieldsInDownstreamOps.ContainsKey(field.FieldAlias));
-                field.AddReferenceFieldAliases(referredFieldsInDownstreamOps[field.FieldAlias]);
+                field.AddReferenceFieldNames(referredFieldsInDownstreamOps[field.FieldAlias]);
             }
 
             // lift the referenced fields in the entity fields from output to input schema of this operator, if
@@ -198,7 +198,7 @@ namespace openCypherTranspiler.LogicalPlanner
 
                     if (mappedAlias != null && referredFieldsInDownstreamOps.ContainsKey(mappedAlias))
                     {
-                        field.AddReferenceFieldAliases(referredFieldsInDownstreamOps[mappedAlias]);
+                        field.AddReferenceFieldNames(referredFieldsInDownstreamOps[mappedAlias]);
                     }
                 }
 
@@ -207,8 +207,8 @@ namespace openCypherTranspiler.LogicalPlanner
                     .ToDictionary(kv => kv.FieldAlias, kv => kv);
 
                 // Some operators has additional fields may get referenced even they are not in output schema
-                // Such as in WHERE
-                // Child logical operator class implement this and does the addition
+                // Such as in WHERE or ORDER BY
+                // Child logical operator class implement this and does the appending
                 AppendReferencedProperties(referredFieldsForUpstream);
             }
         }
@@ -259,10 +259,13 @@ namespace openCypherTranspiler.LogicalPlanner
             }
         }
 
-        internal override void PropagateSchema()
+        internal override void PropagateDateTypesForSchema()
         {
-            // No input, so nothing need to be done
+            // NOOP
+            // StartingOperator has no input schema
+            // The output schema is populated during Bining at the moment
         }
+
 
         internal override void AppendReferencedProperties(IDictionary<string, EntityField> entityFields)
         {
@@ -301,14 +304,18 @@ namespace openCypherTranspiler.LogicalPlanner
             }
         }
 
-        internal abstract void PropagateOutSchema();
+        internal abstract void PropagateDateTypesForOutSchema();
 
-        internal override void PropagateSchema()
+        internal override void PropagateDateTypesForSchema()
         {
-            // For unary operator, the input schema is the output of its input operator's schema without any changes
+            // For a unary operator, its input schema contains same set of the fields as the output schema 
+            // of its input operator
             var prevOutSchema = InOperator.OutputSchema;
-            var fieldMapping = new Dictionary<Field, Field>();
 
+            // Verify and create a map for copying the field metadata, just in case the order changes
+            // Any failure in matching the fields are internal bugs somewhere in the initial logical plan
+            // creation
+            var fieldMapping = new Dictionary<Field, Field>();
             foreach (var inF in InputSchema)
             {
                 var matchOutFields = prevOutSchema.Where(f => f.FieldAlias == inF.FieldAlias);
@@ -325,7 +332,9 @@ namespace openCypherTranspiler.LogicalPlanner
 
             CopyFieldInfoHelper(fieldMapping.Keys, fieldMapping.Values);
 
-            PropagateOutSchema();
+            // The output schema varies, depending on each operator's behavior
+            // E.g. Selection retains the schema, but Projection may alter it
+            PropagateDateTypesForOutSchema();
         }
     }
 
@@ -369,18 +378,18 @@ namespace openCypherTranspiler.LogicalPlanner
             }
         }
 
-        internal abstract void PropagateInSchema();
+        internal abstract void PropagateDataTypesForInSchema();
 
-        internal virtual void PropagateOutSchema()
+        internal virtual void PropagateDataTypesForOutSchema()
         {
             // Default implementation is that output schema doesn't change
             CopyFieldInfoHelper(OutputSchema, InputSchema);
         }
 
-        internal override void PropagateSchema()
+        internal override void PropagateDateTypesForSchema()
         {
-            PropagateInSchema();
-            PropagateOutSchema();
+            PropagateDataTypesForInSchema();
+            PropagateDataTypesForOutSchema();
         }
     }
 
@@ -405,13 +414,13 @@ namespace openCypherTranspiler.LogicalPlanner
             // During binding, we read graph definition of the entity
             // and populate the EntityField object in the output
             // with the list of fields that the node/edge definition can expose
-            var properties = new List<SingleField>();
+            var properties = new List<ValueField>();
             string entityUniqueName;
             string sourceEntityName = null;
             string sinkEntityName = null;
-            SingleField nodeIdField = null;
-            SingleField edgeSrcIdField = null;
-            SingleField edgeSinkIdField = null;
+            ValueField nodeIdField = null;
+            ValueField edgeSrcIdField = null;
+            ValueField edgeSinkIdField = null;
 
             try
             {
@@ -419,9 +428,9 @@ namespace openCypherTranspiler.LogicalPlanner
                 {
                     NodeSchema nodeDef = graphDefinition.GetNodeDefinition(Entity.EntityName);
                     entityUniqueName = nodeDef.Id;
-                    nodeIdField = new SingleField(nodeDef.NodeIdProperty.PropertyName, nodeDef.NodeIdProperty.DataType);
+                    nodeIdField = new ValueField(nodeDef.NodeIdProperty.PropertyName, nodeDef.NodeIdProperty.DataType);
 
-                    properties.AddRange(nodeDef.Properties.Select(p => new SingleField(p.PropertyName, p.DataType)));
+                    properties.AddRange(nodeDef.Properties.Select(p => new ValueField(p.PropertyName, p.DataType)));
                     properties.Add(nodeIdField);
                 }
                 else
@@ -452,10 +461,10 @@ namespace openCypherTranspiler.LogicalPlanner
                     entityUniqueName = edgeDef.Id;
                     sourceEntityName = edgeDef.SourceNodeId;
                     sinkEntityName = edgeDef.SinkNodeId;
-                    edgeSrcIdField = new SingleField(edgeDef.SourceIdProperty.PropertyName, edgeDef.SourceIdProperty.DataType);
-                    edgeSinkIdField = new SingleField(edgeDef.SinkIdProperty.PropertyName, edgeDef.SinkIdProperty.DataType);
+                    edgeSrcIdField = new ValueField(edgeDef.SourceIdProperty.PropertyName, edgeDef.SourceIdProperty.DataType);
+                    edgeSinkIdField = new ValueField(edgeDef.SinkIdProperty.PropertyName, edgeDef.SinkIdProperty.DataType);
 
-                    properties.AddRange(edgeDef.Properties.Select(p => new SingleField(p.PropertyName, p.DataType)));
+                    properties.AddRange(edgeDef.Properties.Select(p => new ValueField(p.PropertyName, p.DataType)));
                     properties.Add(edgeSrcIdField);
                     properties.Add(edgeSinkIdField);
                 }
@@ -541,17 +550,24 @@ namespace openCypherTranspiler.LogicalPlanner
             return sb.ToString();
         }
         
-        internal override void PropagateOutSchema()
+        internal override void PropagateDateTypesForOutSchema()
         {
             // Select operator does not alter schema, so the output should map to input perfectly
             Debug.Assert(OutputSchema.All(f => InputSchema.Any(f2 => f2.FieldAlias == f.FieldAlias && f2.GetType() == f.GetType())));
             CopyFieldInfoHelper(OutputSchema, InputSchema);
 
-            // Additional step for Select operator is to check if additional conditions
-            // should be added if UnexpandedEntityInequalityConditions is specified
+            // If a selection operator has UnexpandedEntityInequalityConditions set, it is a special
+            // selector that requires constructing special logical expressions as FilterExpressions
+            // that was not (able to) be created during initial logical plan construction
+            //
+            // TODO: a better approach is to handle this during plan creation and eliminate having
+            //       special logic inside schema propagation logic
             if (UnexpandedEntityInequalityConditions != null)
             {
+                // Assert that this operator doesn't carry regular filtering expression, which is currently
+                // guaranteed by the Logical Plan creation
                 Debug.Assert(FilterExpression == null);
+
                 FilterExpression = UnexpandedEntityInequalityConditions.Aggregate(
                     FilterExpression,
                     (expr, c) =>
@@ -609,8 +625,9 @@ namespace openCypherTranspiler.LogicalPlanner
 
         internal override void AppendReferencedProperties(IDictionary<string, EntityField> entityFields)
         {
-            // Selection operator may have additional field references in the where/order by conditions that were not referenced in output
-            // Add these as well to the input
+            // Selection operator may have additional field references in the where/order by conditions that 
+            // were not referenced in output schema. we need to add those field references to the list of
+            // referenced fields to the input schema
             
             Debug.Assert(FilterExpression != null || OrderByExpressions != null || Limit != null );
             var allPropertyReferences = new List<QueryExpressionProperty>();
@@ -634,6 +651,9 @@ namespace openCypherTranspiler.LogicalPlanner
 
                 if (prop.Entity != null)
                 {
+                    // Assert that this is a reference to a whole entity
+                    Debug.Assert(fieldName == null);
+
                     if(!entityFields.ContainsKey(varName))
                     {
                         throw new TranspilerInternalErrorException($"Entity field: '{varName}' does not exist");
@@ -645,28 +665,31 @@ namespace openCypherTranspiler.LogicalPlanner
                     // we can by default, for node, does count(d.id) instead, and edge does count(d._vertexId) instead
                     if (entity.Type == EntityField.EntityType.Node)
                     {
-                        entity.AddReferenceFieldAlias(entity.NodeJoinField.FieldAlias);
+                        entity.AddReferenceFieldName(entity.NodeJoinField.FieldAlias);
                     }
                     else
                     {
-                        entity.AddReferenceFieldAlias(entity.RelSourceJoinField.FieldAlias);
+                        entity.AddReferenceFieldName(entity.RelSourceJoinField.FieldAlias);
                     }
                 }
                 else if (fieldName != null)
                 {
-                    // field dereference, just append to list
-                    var propName = prop.PropertyName;
+                    // field member access (i.e. [VariableName].[fieldName]), just append to list
                     if (!entityFields.ContainsKey(varName))
                     {
-                        throw new TranspilerSyntaxErrorException($"entity field: \"{varName}\" not exist");
+                        throw new TranspilerSyntaxErrorException($"Failed to access member '{fieldName} for '{varName}' which does not exist");
                     }
                     var entity = entityFields[varName];
-                    entity.AddReferenceFieldAlias(fieldName);
+                    entity.AddReferenceFieldName(fieldName);
                 }
                 else
                 {
                     // reference to an existing field
-                    // nothing need to be done
+                    // just check if such field exists or not
+                    if (!InputSchema.Any(f2 => f2.FieldAlias == varName))
+                    {
+                        throw new TranspilerSyntaxErrorException($"'{varName}' does not exist");
+                    }
                 }
             }
         }
@@ -689,25 +712,23 @@ namespace openCypherTranspiler.LogicalPlanner
         // projection map, from source expression to projection result (indexed by its FieldName)
         public IDictionary<string, QueryExpression> ProjectionMap { get; private set; }
 
-        internal override void PropagateOutSchema()
+        internal override void PropagateDateTypesForOutSchema()
         {
-            // projection alters the schema, we need to look into the query expressions
-            // to do type propagation
+            // projection may alter the schema with calculated columns
+            // we calculate the data type of all the fields in the output schema
+            // using type evaluation method on the QueryExpression
 
             var exprToOutputMap = ProjectionMap.ToDictionary(
                 kv => kv.Key, // key is output alias
                 kv => new { Expr = kv.Value, Field = OutputSchema.First(f => f.FieldAlias == kv.Key) } // value is the corresponding field object and expression
                 );
-
             foreach (var map in exprToOutputMap)
             {
-                // if any aggregation function, set the flag to be true
-                var allPropertyReferences = map.Value.Expr.GetChildrenQueryExpressionType<QueryExpressionProperty>();
-                if(map.Value.Expr.GetChildrenQueryExpressionType<QueryExpressionAggregationFunction>().Count() > 0)
-                {
-                    HasAggregationField = true;
-                }
+                // toggle the fact if any of the output column requires aggregation
+                HasAggregationField = HasAggregationField || 
+                    (map.Value.Expr.GetChildrenQueryExpressionType<QueryExpressionAggregationFunction>().Count() > 0);
 
+                var allPropertyReferences = map.Value.Expr.GetChildrenQueryExpressionType<QueryExpressionProperty>();
                 if (map.Value.Field is EntityField)
                 {
                     // This can only be direct exposure of entity (as opposed to deference of a particular property)
@@ -722,7 +743,7 @@ namespace openCypherTranspiler.LogicalPlanner
                 {
                     // This can be a complex expression involve multiple field/column references
                     // We will compute the type of the expression
-                    Debug.Assert(map.Value.Field is SingleField);
+                    Debug.Assert(map.Value.Field is ValueField);
 
                     // first of all, bind the type to the variable references
                     foreach (var prop in allPropertyReferences)
@@ -739,10 +760,10 @@ namespace openCypherTranspiler.LogicalPlanner
 
                         if (string.IsNullOrEmpty(propName))
                         {
-                            // refer to a already aliased column exposed from piped data
-                            if (matchedField is SingleField)
+                            // direct reference to an alias (value column or entity column)
+                            if (matchedField is ValueField)
                             {
-                                prop.DataType = (matchedField as SingleField).FieldType;
+                                prop.DataType = (matchedField as ValueField).FieldType;
                             }
                             else
                             {
@@ -758,7 +779,7 @@ namespace openCypherTranspiler.LogicalPlanner
                         }
                         else
                         {
-                            // property reference of an entity
+                            // property dereference of an entity column
                             if (!(matchedField is EntityField))
                             {
                                 throw new TranspilerBindingException($"Failed to dereference property {propName} for alias {varName}, which is not an alias of entity type as expected");
@@ -769,14 +790,14 @@ namespace openCypherTranspiler.LogicalPlanner
                             {
                                 throw new TranspilerBindingException($"Failed to dereference property {propName} for alias {varName}, Entity type {entField.BoundEntityName} does not have a property named {propName}");
                             }
-                            entField.AddReferenceFieldAlias(propName);
+                            entField.AddReferenceFieldName(propName);
                             prop.DataType = entPropField.FieldType;
                         }
                     }
 
                     // do data type evaluation
                     var evalutedType = map.Value.Expr.EvaluateType();
-                    var outField = map.Value.Field as SingleField;
+                    var outField = map.Value.Field as ValueField;
                     outField.FieldType = evalutedType;
                 }
             }
@@ -814,7 +835,7 @@ namespace openCypherTranspiler.LogicalPlanner
             return sb.ToString();
         }
 
-        internal override void PropagateInSchema()
+        internal override void PropagateDataTypesForInSchema()
         {
             // For SetOperator, out schema should be the same for union from 2 source of input
 
@@ -851,9 +872,9 @@ namespace openCypherTranspiler.LogicalPlanner
                 }
                 else
                 {
-                    Debug.Assert(z.LeftField is SingleField && z.RightField is SingleField);
-                    var l = z.LeftField as SingleField;
-                    var r = z.RightField as SingleField;
+                    Debug.Assert(z.LeftField is ValueField && z.RightField is ValueField);
+                    var l = z.LeftField as ValueField;
+                    var r = z.RightField as ValueField;
                     if (l.FieldType != r.FieldType)
                     {
                         throw new TranspilerSyntaxErrorException($"Column type mismatch for column '{z.LeftField.FieldAlias}': left='{l.FieldType}', right='{r.FieldType}'");
@@ -961,7 +982,7 @@ namespace openCypherTranspiler.LogicalPlanner
             return sb.ToString();
         }
 
-        internal override void PropagateInSchema()
+        internal override void PropagateDataTypesForInSchema()
         {
             // Input for JOIN is the combination of both sources
 
@@ -1019,7 +1040,7 @@ namespace openCypherTranspiler.LogicalPlanner
             }
         }
 
-        internal override void PropagateOutSchema()
+        internal override void PropagateDataTypesForOutSchema()
         {
             // Output for JOIN depends on type of the join
             // For LEFT join, attributes becomes non-nullable
@@ -1042,10 +1063,10 @@ namespace openCypherTranspiler.LogicalPlanner
                     outField.Copy(inField);
 
                     // make adjustment for outter join
-                    if (inField is SingleField)
+                    if (inField is ValueField)
                     {
                         Debug.Assert(outField.GetType() == inField.GetType()); // join doesn't alter field types
-                        var outFieldSingleField = outField as SingleField;
+                        var outFieldSingleField = outField as ValueField;
 
                         if (isFromRight && !TypeHelper.CanAssignNullToType(outFieldSingleField.FieldType))
                         {
@@ -1075,7 +1096,7 @@ namespace openCypherTranspiler.LogicalPlanner
             }
             else
             {
-                base.PropagateOutSchema();
+                base.PropagateDataTypesForOutSchema();
             }
         }
 

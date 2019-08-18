@@ -304,7 +304,7 @@ namespace openCypherTranspiler.SQLRenderer
                             IsKeyfield: fn == ef.NodeJoinField?.FieldAlias || fn == ef.RelSourceJoinField?.FieldAlias || fn == ef.RelSinkJoinField?.FieldAlias
                             )))
                 .Union(schema
-                    .Where(f => f is SingleField).Cast<SingleField>()
+                    .Where(f => f is ValueField).Cast<ValueField>()
                     .Select(fn => (EntityAlias: (string)null, PropertyName: fn.FieldAlias, FieldType: fn.FieldType, IsKeyfield: false)));
         }
 
@@ -855,7 +855,7 @@ namespace openCypherTranspiler.SQLRenderer
             
             var allColsToOutput = ExpandSchema(prjOp.OutputSchema);
             var allOutputEntities = prjOp.OutputSchema.Where(f => f is EntityField).Cast<EntityField>();
-            var allOutputSingleFields = prjOp.OutputSchema.Where(f => f is SingleField).Cast<SingleField>();
+            var allOutputSingleFields = prjOp.OutputSchema.Where(f => f is ValueField).Cast<ValueField>();
 
             // look ahead one more operator - if it is selection operator we will collapse with the projection
             var preCond = prjOp.InOperator as SelectionOperator;
@@ -932,7 +932,7 @@ namespace openCypherTranspiler.SQLRenderer
             codeSnip.AppendLine(depth, $"FROM (");
 
             
-            // collaspe the selection with the current projection if we can
+            // collapse the selection with the current projection if we can
             if (preCond != null)
             {
                 var prevOp = preCond.InOperator;
@@ -982,7 +982,7 @@ namespace openCypherTranspiler.SQLRenderer
             // expand output schema
             var allColsToOutput = ExpandSchema(condOp.OutputSchema);
             var allOutputEntities = condOp.OutputSchema.Where(f => f is EntityField).Cast<EntityField>();
-            var allOutputSingleFields = condOp.OutputSchema.Where(f => f is SingleField).Cast<SingleField>();
+            var allOutputSingleFields = condOp.OutputSchema.Where(f => f is ValueField).Cast<ValueField>();
             var topXVal = condOp.Limit?.RowCount;
             bool isFirstRow = true;
 

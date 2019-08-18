@@ -561,13 +561,13 @@ LIMIT 20
 MATCH (p:Person)-[a:ACTED_IN]->(m:Movie)
 WITH DISTINCT m.Title as Title, p.Name as Name
 WHERE a.Title <> 'A'
-RETURN  Title, Name
+RETURN Title, Name
     ";
                     TranspileToSQL(queryText);
                 }
                 catch (TranspilerSyntaxErrorException e)
                 {
-                    Assert.IsTrue(e.Message.Contains("entity field: \"a\" not exist"));
+                    Assert.IsTrue(e.Message.Contains("'a' which does not exist"));
                     expectedExceptionThrown = true;
                 }
                 Assert.IsTrue(expectedExceptionThrown);
@@ -589,7 +589,7 @@ RETURN  Title, Name
                 }
                 catch (TranspilerSyntaxErrorException e)
                 {
-                    Assert.IsTrue(e.Message.Contains("TitleNotExist not existed"));
+                    Assert.IsTrue(e.Message.Contains("'TitleNotExist' does not exist"));
                     expectedExceptionThrown = true;
                 }
                 Assert.IsTrue(expectedExceptionThrown);

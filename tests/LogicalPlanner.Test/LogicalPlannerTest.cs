@@ -158,11 +158,11 @@ return p.Name as Name1, p2.Name as Name2, m.Title as Title, r.Rating as Rating1,
                 Assert.IsTrue(lp.TerminalOperators.Count() == 1);
                 Assert.IsTrue(lp.TerminalOperators.First().GetAllUpstreamOperatorsOfType<JoinOperator>().Any(o => o.Type == JT.Left));
                 // nullable no change after optional match
-                Assert.IsTrue((lp.TerminalOperators.First().OutputSchema.First(f => f.FieldAlias == "Name1") as SingleField).FieldType == typeof(string));
-                Assert.IsTrue((lp.TerminalOperators.First().OutputSchema.First(f => f.FieldAlias == "Name2") as SingleField).FieldType == typeof(string));
+                Assert.IsTrue((lp.TerminalOperators.First().OutputSchema.First(f => f.FieldAlias == "Name1") as ValueField).FieldType == typeof(string));
+                Assert.IsTrue((lp.TerminalOperators.First().OutputSchema.First(f => f.FieldAlias == "Name2") as ValueField).FieldType == typeof(string));
                 // non nullable changed to nullable after optional match
-                Assert.IsTrue((lp.TerminalOperators.First().OutputSchema.First(f => f.FieldAlias == "Rating1") as SingleField).FieldType == typeof(int));
-                Assert.IsTrue((lp.TerminalOperators.First().OutputSchema.First(f => f.FieldAlias == "Rating2") as SingleField).FieldType == typeof(int?));
+                Assert.IsTrue((lp.TerminalOperators.First().OutputSchema.First(f => f.FieldAlias == "Rating1") as ValueField).FieldType == typeof(int));
+                Assert.IsTrue((lp.TerminalOperators.First().OutputSchema.First(f => f.FieldAlias == "Rating2") as ValueField).FieldType == typeof(int?));
             }
 
             // Basic test with WITH and OPTIONAL match

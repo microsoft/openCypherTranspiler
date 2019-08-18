@@ -282,11 +282,11 @@ namespace openCypherTranspiler.openCypherParser.AST
 
         /// <summary>
         /// Helper function to get all direct entity reference from a return body item list ( [some expr] AS [alias] )
-        /// E.g.  MATCH (p:person) WITH p as q, p.id as Id, this will return just Entity with alias = p and type = erpson
+        /// E.g.  MATCH (p:person) WITH p as q, p.id as Id, this will return just Entity with alias = p and type = person
         /// </summary>
         /// <param name="exprs"></param>
         /// <returns>A dictionary of the reference to the Entity object keyed by its alias (in AS [alias] expr)</returns>
-        private IDictionary<string, Entity> GetEntitiesFromReturnBodyByRef(IEnumerable<QueryExpressionWithAlias> exprs)
+        private IDictionary<string, Entity> GetDirectlyExposedEntities(IEnumerable<QueryExpressionWithAlias> exprs)
         {
             return exprs
                 .Select(expr => new { Alias = expr.Alias, Entity = expr.InnerExpression.TryGetDirectlyExposedEntity() })
@@ -300,9 +300,9 @@ namespace openCypherTranspiler.openCypherParser.AST
         /// </summary>
         /// <param name="exprs"></param>
         /// <returns></returns>
-        private IEnumerable<Entity> GetEntitiesFromReturnBodyWithAliasApplied(IEnumerable<QueryExpressionWithAlias> exprs)
+        private IEnumerable<Entity> GetDirectlyExposedEntitiesWithAliasApplied(IEnumerable<QueryExpressionWithAlias> exprs)
         {
-            return GetEntitiesFromReturnBodyByRef(exprs)
+            return GetDirectlyExposedEntities(exprs)
                 .Select(kv =>
                 {
                     var ent = kv.Value.Clone();
@@ -313,11 +313,11 @@ namespace openCypherTranspiler.openCypherParser.AST
 
         /// <summary>
         /// Helper function to get all non entity fields from a return body item list ( [some expr] AS [alias] )
-        /// E.g.  ... WITH avg+1 as shift_avg. This will return QueryExprWithAlias: alias = shift_avg, expr = avg+1
+        /// E.g.  ... WITH avg+1 as shift_avg. This will return QueryExprWithAlias: {alias = shift_avg, expr = avg+1}
         /// </summary>
         /// <param name="exprs"></param>
         /// <returns></returns>
-        private IEnumerable<string> GetNonEntitiesAliasesFromReturnBody(IEnumerable<QueryExpressionWithAlias> exprs)
+        private IEnumerable<string> GetNonEntitiesAliases(IEnumerable<QueryExpressionWithAlias> exprs)
         {
             return exprs
                 .Where(expr => expr.InnerExpression.TryGetDirectlyExposedEntity() == null)
@@ -371,15 +371,20 @@ namespace openCypherTranspiler.openCypherParser.AST
                 };
             }
 
-            // A Match statment (not RET or WITH) has implied projection expressions as returned items of this partial query node:
-            //  - includes all named entities in the match pattern (later, we can optimize out if some are not used at all)
+            // A Match statement (not RET or WITH) has implied projection expressions as returned items of 
+            // this partial query node:
+            //  - includes all named entities in the match pattern (later, we can optimize out if some are 
+            //    not used at all)
             //  - includes all inherited returns
             var allReturnedEntities = matchParts.SelectMany(l => l)
-                .Union(prevQueryPart != null ? GetEntitiesFromReturnBodyWithAliasApplied(prevQueryPart.ProjectedExpressions) : Enumerable.Empty<Entity>())
+                .Union(prevQueryPart != null ? 
+                    GetDirectlyExposedEntitiesWithAliasApplied(prevQueryPart.ProjectedExpressions) : 
+                    Enumerable.Empty<Entity>())
                 .Where(e => !string.IsNullOrEmpty(e.Alias))
                 .GroupBy(e => e.Alias);
-            // TODO: missing alias duplicacy check here with entity
-            var allInheritedProperties = prevQueryPart != null ? GetNonEntitiesAliasesFromReturnBody(prevQueryPart.ProjectedExpressions) : Enumerable.Empty<string>();
+            var allInheritedProperties = prevQueryPart != null ? 
+                GetNonEntitiesAliases(prevQueryPart.ProjectedExpressions) : 
+                Enumerable.Empty<string>();
 
             var returnedExprs = allReturnedEntities
                 .Select(g =>
@@ -477,18 +482,17 @@ namespace openCypherTranspiler.openCypherParser.AST
                     // propagate the entity types to the list of return items that are direct exposure of entities
                     // NOTE: currently we assume direct reference. Any function manipulation will cause it become
                     //       a non-node reference so that it cannot be used as entity variables in next MATCH statement
-                    //       e.g. u as u or (u) as u is okay , AVG(u) as u is no longer an enity
-                    Debug.Assert(projectionExprs.All(p => p is QueryExpressionWithAlias));
-                    UpdateReturnBodyWithEntityTypes(
-                        projectionExprs.Cast<QueryExpressionWithAlias>(),
-                        GetEntitiesFromReturnBodyWithAliasApplied(prevQueryPart.ProjectedExpressions)
+                    //       e.g. u as u or (u) as u is okay , AVG(u) as u is no longer an entity
+                    UpdateEntityTypesInExpressionInPlace(
+                        projectionExprs,
+                        GetDirectlyExposedEntitiesWithAliasApplied(prevQueryPart.ProjectedExpressions)
                         );
 
                     queryNode = singleQueryNode;
                 }
                 else if (child is CypherParser.OC_UpdatingClauseContext)
                 {
-                    throw new TranspilerNotSupportedException("Updaing clause");
+                    throw new TranspilerNotSupportedException("Any type of updating clause");
                 }
                 else
                 {
@@ -499,24 +503,29 @@ namespace openCypherTranspiler.openCypherParser.AST
             return queryNode;
         }
 
-        private void UpdateReturnBodyWithEntityTypes(IEnumerable<QueryExpressionWithAlias> exprsToUpdate, IEnumerable<Entity> entities)
+        /// <summary>
+        /// Helper update in-place the Entity Type for any QueryExpressionProperty potentially referring to an entity
+        /// nested in a list of QueryExpression roots
+        /// </summary>
+        /// <param name="exprsToUpdate">list of QueryExpression that may contain QueryExpressionProperty inside</param>
+        /// <param name="entities">a mapping of entity type to alias</param>
+        /// <returns></returns>
+        private void UpdateEntityTypesInExpressionInPlace(IEnumerable<QueryExpression> exprsToUpdate, IEnumerable<Entity> entities)
         {
             var projectionExprsReferingEntities = exprsToUpdate
-                .Where(p => p.InnerExpression is QueryExpressionProperty &&
-                string.IsNullOrEmpty(((QueryExpressionProperty)p.InnerExpression).PropertyName))
-                .Select(p => p.InnerExpression as QueryExpressionProperty)
+                .SelectMany(e => e.GetChildrenQueryExpressionType<QueryExpressionProperty>())
+                .Cast<QueryExpressionProperty>()
+                .Where(p => string.IsNullOrEmpty(p.PropertyName))
                 .ToList();
+            // make best-effort in-place update for any alias with an entity match
+            // for any that did not match, it is either a reference to a value alias
+            // or a dangling alias - which will trigger exception down the line
             projectionExprsReferingEntities.ForEach(e =>
             {
                 var entityMatchedAlias = entities.FirstOrDefault(e2 => e2.Alias == e.VariableName);
                 if (entityMatchedAlias != null)
                 {
                     e.Entity = entityMatchedAlias.Clone();
-                }
-                else
-                {
-                    // if we cannot match alias, we treat is not as entity reference for now and ignore it
-                    // later part of parsing should fail for any dangling reference
                 }
             });
         }
@@ -582,10 +591,15 @@ namespace openCypherTranspiler.openCypherParser.AST
             _logger?.LogVerbose("{0}: {1}", "VisitOC_SingleQuery", context.GetText());
             // returns SingleQueryTreeNode
 
-            // In this function, we fix up the chained query parts to populate all the inferred labels
-            // to do this, we walk down to the bottom (leaf node) of the tree and walk back, and each step we
-            // fix up the current query parts and update the returned entity types
-            // For any types we cannot infer, we throw exception
+            // In finalizing the SingleQueryNode, we ensure on a best-effort basis that all entity references 
+            // have its type spelled out, e.g. In
+            //   MATCH (a:Person), (a) WITH a ...
+            // the subsequence reference to 'a' will be marked as entity type 'Person'
+            //
+            // To do this, we walk up the tree (bear in mind: bottom of the tree is earlier in the openCypher 
+            // query, and root node of the tree is the final result) and in each layer
+            //
+            // In this implementation, for any types we cannot infer, we throw exception eventually
             var singleQuery = VisitChildren(context) as SingleQueryNode ?? throw new TranspilerInternalErrorException("Parsing oC_SinglePartQuery or oC_MultiPartQuery");
 
             var queryChainTreeNode = singleQuery.PipedData as PartialQueryNode;
@@ -599,21 +613,21 @@ namespace openCypherTranspiler.openCypherParser.AST
                 queryChain.Push(queryChainTreeNode);
             }
 
-            // propagate entity names for all entity objects with same alias for each query part, from
+            // propagate entity types for all entity objects sharing same alias for each query part, from
             // bottom up of the query tree
             // for any conflict type (e.g. single alias assigned to 2 types), raise error
             var inheritedEntities = Enumerable.Empty<Entity>();
             while (queryChain.Count > 0)
             {
                 var queryTreeNode = queryChain.Pop();
-                var entitiesInReturn = GetEntitiesFromReturnBodyByRef(queryTreeNode.ProjectedExpressions);
+                var entitiesInReturn = GetDirectlyExposedEntities(queryTreeNode.ProjectedExpressions);
                 var entitiesInMatchPatterns = queryTreeNode.MatchData?.AllEntitiesOrdered ?? Enumerable.Empty<Entity>().ToList();
 
                 // first pass, propagate all node and edge labels for those sharing aliases
                 entitiesInReturn
                     .Values
                     .Union(entitiesInMatchPatterns)
-                    .Where(e => !string.IsNullOrEmpty(e.Alias)) // skip over all anonymous node/edge. we later assert that they all have types already specified explictly 
+                    .Where(e => !string.IsNullOrEmpty(e.Alias)) // skip over all anonymous node/edge. we later assert that they all have types already specified explicitly 
                     .GroupBy(e => e.Alias)
                     .ToList()
                     .ForEach(g =>
@@ -702,14 +716,14 @@ namespace openCypherTranspiler.openCypherParser.AST
                 }
 
                 // before moving to next query part, update inheritedEntities to the current query part's returned list of entities
-                inheritedEntities = GetEntitiesFromReturnBodyWithAliasApplied(queryTreeNode.ProjectedExpressions);
+                inheritedEntities = GetDirectlyExposedEntitiesWithAliasApplied(queryTreeNode.ProjectedExpressions);
             }
 
             // in the final return statement, we currently do not support return entities, so we fail any attempt to do so
-            var entitiesInFinalReturn = GetEntitiesFromReturnBodyWithAliasApplied(singleQuery.EntityPropertySelected);
+            var entitiesInFinalReturn = GetDirectlyExposedEntitiesWithAliasApplied(singleQuery.EntityPropertySelected);
             if (entitiesInFinalReturn.Count() > 0)
             {
-                throw new TranspilerNotSupportedException($"Entites ({string.Join(", ", entitiesInFinalReturn.Select(e => e.Alias))}) in return statement");
+                throw new TranspilerNotSupportedException($"Entities ({string.Join(", ", entitiesInFinalReturn.Select(e => e.Alias))}) in return statement");
             }
 
             return singleQuery;
@@ -766,7 +780,7 @@ namespace openCypherTranspiler.openCypherParser.AST
                         LimitClause Limit
                         ))Visit(child);
 
-                    // WITH will mask out any entities from MATCH that was not explicity returned
+                    // WITH will mask out any entities from MATCH that was not explicitly returned
                     // get a list of entities exposed from current query part and leave it for next query part (if any)
                     // for constructing the match pattern that refers to any of these entities
                     // If we have a previous query part, we get a list of variables from previous query that
@@ -777,6 +791,20 @@ namespace openCypherTranspiler.openCypherParser.AST
                     //    ...
                     var projectionExprs = withResult.ReturnItems ?? 
                         throw new TranspilerSyntaxErrorException($"Expecting a valid list of items to be projected: {child.GetText()}");
+
+                    // similar to that in SingleQuery case, update the entity type for entity aliases
+                    // in addition, do that for OrderBy and Where clauses too
+                    UpdateEntityTypesInExpressionInPlace(
+                        projectionExprs
+                            .Union(withResult.Condition != null ?
+                                new List<QueryExpression>() {withResult.Condition} :
+                                Enumerable.Empty<QueryExpression>())
+                            .Union(withResult.OrderByItems != null ?
+                                withResult.OrderByItems.Select(o => o.InnerExpression) :
+                                Enumerable.Empty<QueryExpression>()),
+                        GetDirectlyExposedEntitiesWithAliasApplied(prevQueryPart.ProjectedExpressions)
+                        );
+
                     var partQueryTree = new PartialQueryNode()
                     {
                         PipedData = prevQueryPart,
@@ -784,23 +812,11 @@ namespace openCypherTranspiler.openCypherParser.AST
                         FilterExpression = withResult.Condition,
                         IsDistinct = withResult.IsDistinct,
                         MatchData = null, // in this implementation, we do not put MATCH clause and WITH clause into one query part
-                        IsImplicitProjection = false, // indication this is a WITH/RETURN with explicity projection
+                        IsImplicitProjection = false, // indication this is a WITH/RETURN with explicitly projection
                         CanChainNonOptionalMatch = true,
                         Limit = withResult.Limit,
                         OrderByClause = withResult.OrderByItems,
                     };
-
-                    // propagate the entity types (node/edge, if possible EntityName as well) to the list of return items that 
-                    // are direct exposure of entities
-                    // NOTE: currently we assume direct reference. Any function manipulation will cause it become
-                    //       a non-node reference so that it cannot be used as entity variables in next MATCH statement
-                    //       e.g. u as u or (u) as u is okay , AVG(u) as u is no longer an enity
-                    Debug.Assert(projectionExprs.All(p => p is QueryExpressionWithAlias));
-                    UpdateReturnBodyWithEntityTypes(
-                        projectionExprs.Cast<QueryExpressionWithAlias>(),
-                        GetEntitiesFromReturnBodyWithAliasApplied(prevQueryPart.ProjectedExpressions)
-                        );
-
                     prevQueryPart = partQueryTree;
                 }
                 else if (child is CypherParser.OC_SinglePartQueryContext) // (ReadingClauses)* RETURN
@@ -812,7 +828,7 @@ namespace openCypherTranspiler.openCypherParser.AST
                 }
                 else if (child is CypherParser.OC_UpdatingClauseContext)
                 {
-                    throw new TranspilerNotSupportedException("Updaing clause");
+                    throw new TranspilerNotSupportedException("Updating clause");
                 }
                 else
                 {
@@ -907,7 +923,7 @@ namespace openCypherTranspiler.openCypherParser.AST
         public override object VisitOC_PatternPart([NotNull] CypherParser.OC_PatternPartContext context)
         {
             _logger?.LogVerbose("{0}: {1}", "VisitOC_PatternPart", context.GetText());
-            // return IList<Entity> (pass trhough)
+            // return IList<Entity> (pass through)
             IList<Entity> matchPatternPart = null;
 
             for (int i = 0; i < context.ChildCount; i++)

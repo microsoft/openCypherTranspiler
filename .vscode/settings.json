@@ -13,7 +13,10 @@
     "octestdb",
     "transpiled",
     "transpiler",
-    "transpiling"
+    "transpiling",
+    "nvarchar",
+    "ISNULL",
+    "equijoin"
   ],
   "cSpell.ignoreWords": [
     "dbsql"

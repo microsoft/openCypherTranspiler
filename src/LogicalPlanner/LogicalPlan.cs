@@ -145,7 +145,7 @@ namespace openCypherTranspiler.LogicalPlanner
             //                            Projection(a.id -> Id)
 
 
-            // inorder walk of the tree to evaulate individual queries
+            // in-order walk of the tree to evaluate individual queries
             if (treeNode is SingleQueryNode)
             {
                 // single query
@@ -159,7 +159,7 @@ namespace openCypherTranspiler.LogicalPlanner
         }
 
         /// <summary>
-        /// Create logical oeprator tree for sub-tree node type InfixQueryNode
+        /// Create logical operator tree for sub-tree node type InfixQueryNode
         /// </summary>
         /// <param name="treeNode"></param>
         /// <returns></returns>
@@ -367,7 +367,7 @@ namespace openCypherTranspiler.LogicalPlanner
             {
                 // the query part contains a MATCH clause
                 // since the parser tree guarantees no explicit projection (by WITH/RETURN), we do not need to handle things like 
-                // DISTINCT or ORDER BY as they appears only wtih WITH/RETURN
+                // DISTINCT or ORDER BY as they appears only with WITH/RETURN
                 // we do, however, need to handle WHERE
 
                 var isOptionalMatch = treeNode.MatchData.MatchPatterns.Any(p => p.IsOptionalMatch);
@@ -452,19 +452,20 @@ namespace openCypherTranspiler.LogicalPlanner
         }
 
         /// <summary>
-        /// creating selection operator for ORDER BY ... LIMIT  clause
+        /// Creating a selection operator for ORDER BY ... LIMIT  clause
         /// </summary>
-        /// <param name="exp"></param>
+        /// <param name="orderClause">optional orderBy clause with a list of expressions</param>
+        /// <param name="limitExp">optional TOP N limit</param>
         /// <param name="pipedData"></param>
         /// <param name="allLogicalOps"></param>
         /// <returns></returns>
         private LogicalOperator CreateLogicalTree(
-            IList<SortItem> orderExp, 
+            IList<SortItem> orderClause, 
             LimitClause limitExp,
             LogicalOperator pipedData, 
             ISet<LogicalOperator> allLogicalOps)
         {
-            var selectionOp = new SelectionOperator(pipedData, orderExp, limitExp);
+            var selectionOp = new SelectionOperator(pipedData, orderClause, limitExp);
             var selectionSchema = new Schema(pipedData.OutputSchema);
 
             // append new property from ORDER BY clause to the the input and output schema
@@ -476,9 +477,9 @@ namespace openCypherTranspiler.LogicalPlanner
         }
         
         /// <summary>
-        /// Create filtering operator for unexpanded inequality expression
+        /// Create a selection operator for unexpanded inequality expression
         /// </summary>
-        /// <param name="exp"></param>
+        /// <param name="conds">a list of inequality conditions, each involes 2 relationship aliases of same relationship type</param>
         /// <param name="pipedData"></param>
         /// <param name="allLogicalOps"></param>
         /// <returns></returns>
@@ -517,7 +518,7 @@ namespace openCypherTranspiler.LogicalPlanner
                 }
                 else
                 {
-                    return new SingleField(
+                    return new ValueField(
                         expr.Alias
                     ) as Field;
                 }
@@ -542,11 +543,11 @@ namespace openCypherTranspiler.LogicalPlanner
         }
 
         /// <summary>
-        /// Create join operator to join two set of operators with a list of entity aliases of instances of node which their id should be used in equi-join
+        /// Create join operator to join two set of operators with a list of entity aliases of instances of node which their id should be used in equijoin
         /// </summary>
         /// <param name="left"></param>
         /// <param name="right"></param>
-        /// <param name="entityAliasesToJoin">the list of aliases (in the output of left/right) that represents entity instances and should be used in nodeid equi-join</param>
+        /// <param name="entityAliasesToJoin">the list of aliases (in the output of left/right) that represents entity instances and should be used in node id equijoin</param>
         /// <param name="isLeftOutterJoin">if false, the join type assumed to be would be inner instead</param>
         /// <param name="allLogicalOps"></param>
         /// <returns></returns>
@@ -609,8 +610,10 @@ namespace openCypherTranspiler.LogicalPlanner
             {
                 if (relEntity.LeftEntityName == relEntity.RightEntityName)
                 {
-                    // TODO: in future, we can support this and set the joinKeyType to .Both. This requires
-                    //       we add support in codegen to produce a data source that has src/sink key reversed unioned with itself
+                    // TODO: Blocked for now to force directional traversal. To support this in future,
+                    //       We can support this and set the joinKeyType to 'Both' and add support in code
+                    //       renderer that support unioning relationships (in this case union with itself by 
+                    //       src/dest key reversed)
                     throw new TranspilerNotSupportedException("Consider specifying the direction of traversal <-[]- or -[]->. Directionless traversal for relationship with same type of source and sink entity");
                 }
                 joinKeyType = JoinOperator.JoinKeyPair.JoinKeyPairType.Either;
@@ -680,11 +683,11 @@ namespace openCypherTranspiler.LogicalPlanner
                 .Select((p, i) => new { Order = i, Entity = p.Entity })
                 .ToDictionary(kv => kv.Entity.Alias, kv => kv);
 
-            // build an adjancency matrix represent the DAG for the join logical operator each alias in the form of an array[Dim1, Dim2]
-            // note that the list of DataSourceOperator are added to allLogicalOps later in the code after recociling with inherited entities
+            // build an adjacency matrix represent the DAG for the join logical operator each alias in the form of an array[Dim1, Dim2]
+            // note that the list of DataSourceOperator are added to allLogicalOps later in the code after reconciliating with inherited entities
             var logicOpSrcTable = aliasTable.ToDictionary(kv => kv.Key, kv => new DataSourceOperator(kv.Value.Entity) as LogicalOperator);
 
-            // build adjancency matrix with element being the join type between the two entities
+            // build adjacency matrix with element being the join type between the two entities
             //               alias1, alias2, alias3, ... (Dim 1)
             //       alias1  NA      INNER   LEFT
             //       alias2          NA      LEFT
@@ -762,7 +765,7 @@ namespace openCypherTranspiler.LogicalPlanner
                         allLogicalOps.Add(op);
                     });
 
-            // process the matching patterns to update the adjancency matrix
+            // process the matching patterns to update the adjacency matrix
             var entitiesPartOfNonOptionalMatch = namedMatchData.MatchPatterns
                 .Where(p => p.IsOptionalMatch == false)
                 .SelectMany(p => p)
@@ -779,7 +782,7 @@ namespace openCypherTranspiler.LogicalPlanner
                     var curEntIdx = aliasTable[ent.Alias].Order;
                     // left join only if current is pattern is optional match
                     // and one of the entity already appears in non-optional match
-                    // pattern or is inhertied from previous query part
+                    // pattern or is inherited from previous query part
                     bool isLeftJoin = 
                         matchPattern.IsOptionalMatch &&
                         (entitiesPartOfNonOptionalMatch.Contains(prevEnt.Alias) != entitiesPartOfNonOptionalMatch.Contains(ent.Alias));
@@ -823,7 +826,7 @@ namespace openCypherTranspiler.LogicalPlanner
             //       c, Join(Join(DataSource(a), DataSource(b)), DataSource(c))
             //       d, DataSource(d)
             //       e, DataSource(e)
-            // After processin the second MatchPattern: (e)
+            // After processing the second MatchPattern: (e)
             //       // no change as (e) does not have
             // After processing the third MatchPattern: (a)-[d]-(c)
             //       a, Join(Join(Join(DataSource(a), DataSource(b)), DataSource(c)), DataSource(d))
@@ -853,7 +856,7 @@ namespace openCypherTranspiler.LogicalPlanner
                     JoinOperator.JoinKeyPair existingJoinPair;
                     if (joinPairs.TryGetValue(key, out existingJoinPair))
                     {
-                        // update/validate if already observed the same join and maybe of differen type
+                        // update/validate if already observed the same join and maybe of different type
                         // update paths:
                         //    either -> { left, right, both }
                         //    left -> {both}
@@ -917,7 +920,7 @@ namespace openCypherTranspiler.LogicalPlanner
                             newOp.InputSchema = new Schema(fields);
                             newOp.OutputSchema = new Schema(fields);
 
-                            // caculate join needed by this operator
+                            // calculate join needed by this operator
                             var entAliasesJointTogether = leftOp.OutputSchema.Where(s => s is EntityField).Select(s => s.FieldAlias)
                                 .Union(
                                     rightOp.OutputSchema.Where(s => s is EntityField).Select(s => s.FieldAlias)
@@ -929,7 +932,7 @@ namespace openCypherTranspiler.LogicalPlanner
                             {
                                 // add join to this particular operator
                                 newOp.AddJoinPair(kv.Value);
-                                // remove from unsatisified join key list
+                                // remove from unsatisfied join key list
                                 joinPairs.Remove(kv.Key);
                             });
 
@@ -1027,37 +1030,33 @@ namespace openCypherTranspiler.LogicalPlanner
         /// </summary>
         private void PropagateDataTypes()
         {
-            // Going top down for each layers in the logical plan to propagate field's data types
             var allOperators = StartingOperators
                 .SelectMany(op => op.GetAllDownstreamOperatorsOfType<LogicalOperator>())
                 .Distinct()
                 .GroupBy(op => op.Depth)
-                .OrderBy(g => g.Key);
+                .OrderBy(g => g.Key);  // top-down direction for type propagation
 
             Debug.Assert(allOperators.First().All(op => op is StartLogicalOperator));
 
-            // First level containers only start operators is taken care off in previous stage (data binding)
-            // We start from second level and down to propagate data types
+            // Note: first level are start operators and have schema populated during binding
             foreach (var opGrp in allOperators.Skip(1))
             {
-                opGrp.ToList().ForEach(op => op.PropagateSchema());
+                opGrp.ToList().ForEach(op => op.PropagateDateTypesForSchema());
             }
         }
 
         /// <summary>
-        /// Update the list of actual fields that got referenced for each entity reference
+        /// Update the list of actual fields referenced for each entity alias in the return 
+        /// body or clauses such as WHERE, ORDER BY, etc.
         /// This helps to trim out unreferenced fields early in the logical plan tree
         /// </summary>
         private void UpdateActualFieldReferencesForEntityFields()
         {
-            // we go bottom up to propagate entity fields referenced in return body or condition clauses
-            // that each operator's input/ouput schema must carry
-
             var allOperators = StartingOperators
                 .SelectMany(op => op.GetAllDownstreamOperatorsOfType<LogicalOperator>())
                 .Distinct()
                 .GroupBy(op => op.Depth)
-                .OrderByDescending(g => g.Key);
+                .OrderByDescending(g => g.Key); // Bottom-up to keep accumulating until the source
             foreach (var opGrp in allOperators)
             {
                 opGrp.ToList().ForEach(op => op.PropagateReferencedPropertiesForEntityFields());
