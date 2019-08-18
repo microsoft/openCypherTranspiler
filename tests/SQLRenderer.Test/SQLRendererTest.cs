@@ -214,7 +214,7 @@ namespace openCypherTranspiler.SQLRenderer.Test
                     }
                     break;
                 }
-                catch (SqlException e)
+                catch (SqlException)
                 {
                     if (retry < retriesMax)
                     {
@@ -402,7 +402,7 @@ CASE WHEN PersonName = 'Tom Hanks' THEN 1 WHEN PersonName starts with 'Tom' THEN
                 RunQueryAndCompare(queryText);
             }
 
-            // swiching entities aliases 
+            // switching entities aliases 
             {
                 var queryText = @"
 MATCH (p:Person)-[a:ACTED_IN]->(m:Movie)
@@ -567,7 +567,7 @@ RETURN  Title, Name
                 }
                 catch (TranspilerSyntaxErrorException e)
                 {
-                    Assert.IsTrue(e.Message.Contains("entity field: \"a\" not exsit"));
+                    Assert.IsTrue(e.Message.Contains("entity field: \"a\" not exist"));
                     expectedExceptionThrown = true;
                 }
                 Assert.IsTrue(expectedExceptionThrown);
@@ -582,14 +582,14 @@ RETURN  Title, Name
                     var queryText = @"
 MATCH (p:Person)-[a:ACTED_IN]->(m:Movie)
 WITH DISTINCT m.Title as Title, p.Name as Name
-WHERE Titl <> 'A'
+WHERE TitleNotExist <> 'A'
 RETURN  Title, Name
     ";
                     TranspileToSQL(queryText);
                 }
                 catch (TranspilerSyntaxErrorException e)
                 {
-                    Assert.IsTrue(e.Message.Contains("Titl not existed"));
+                    Assert.IsTrue(e.Message.Contains("TitleNotExist not existed"));
                     expectedExceptionThrown = true;
                 }
                 Assert.IsTrue(expectedExceptionThrown);
@@ -793,7 +793,7 @@ LIMIT 11
                 RunQueryAndCompare(queryText);
             }
 
-            // order by nested under with statement
+            // order by nested under WITH statement
             {
                 var queryText = @"
 MATCH (p:Person)-[a:ACTED_IN]->(m:Movie)
@@ -808,7 +808,7 @@ RETURN Name2, Title
                 RunQueryAndCompare(queryText);
             }
 
-            // order by nested undet return statement
+            // order by nested under return statement
             {
                 var queryText = @"
 MATCH (p:Person)-[a:ACTED_IN]->(m:Movie)
@@ -821,7 +821,7 @@ LIMIT 20
                 RunQueryAndCompare(queryText);
             }
 
-            // order by nested undet return statement
+            // order by nested under return statement
             {
                 var queryText = @"
 MATCH (p:Person)-[a:ACTED_IN]->(m:Movie)

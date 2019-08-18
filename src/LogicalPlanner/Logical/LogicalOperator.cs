@@ -29,10 +29,10 @@ namespace openCypherTranspiler.LogicalPlanner
         /// <summary>
         /// The schema this operator takes in
         /// </summary>
-        /// Note: we thought about making this a getter of fields from output from it's in operator
+        /// Note: We thought about making this a getter of fields from output from it's in operator
         ///       however, for certain operators, it is not always a combination of all output, making
-        ///       it awkard in some cases to implement field reference propagate
-        ///       hence for now, we keep this a separate instanced list to maintain
+        ///       it awkward in some cases to implement field reference propagation. Hence for now, we 
+        ///       keep this a separate instanced list to maintain
         public Schema InputSchema { get; set; }
 
         /// <summary>
@@ -159,7 +159,7 @@ namespace openCypherTranspiler.LogicalPlanner
         internal virtual void PropagateReferencedPropertiesForEntityFields()
         {
             // lift the referenced fields from the next layer of operators back to this one's output entity fields
-            var referedFieldsInDownstreamOps = OutOperators.SelectMany(op => op.InputSchema)
+            var referredFieldsInDownstreamOps = OutOperators.SelectMany(op => op.InputSchema)
                 .Where(f => f is EntityField)
                 .Cast<EntityField>()
                 .GroupBy(f => f.FieldAlias)
@@ -167,8 +167,8 @@ namespace openCypherTranspiler.LogicalPlanner
 
             foreach (var field in OutputSchema.Where(f => f is EntityField).Cast<EntityField>())
             {
-                Debug.Assert(referedFieldsInDownstreamOps.ContainsKey(field.FieldAlias));
-                field.AddReferenceFieldAliases(referedFieldsInDownstreamOps[field.FieldAlias]);
+                Debug.Assert(referredFieldsInDownstreamOps.ContainsKey(field.FieldAlias));
+                field.AddReferenceFieldAliases(referredFieldsInDownstreamOps[field.FieldAlias]);
             }
 
             // lift the referenced fields in the entity fields from output to input schema of this operator, if
@@ -196,29 +196,29 @@ namespace openCypherTranspiler.LogicalPlanner
                 {
                     var mappedAlias = (aliasMap.ContainsKey(field.FieldAlias) ?aliasMap[field.FieldAlias]:null);
 
-                    if (mappedAlias != null && referedFieldsInDownstreamOps.ContainsKey(mappedAlias))
+                    if (mappedAlias != null && referredFieldsInDownstreamOps.ContainsKey(mappedAlias))
                     {
-                        field.AddReferenceFieldAliases(referedFieldsInDownstreamOps[mappedAlias]);
+                        field.AddReferenceFieldAliases(referredFieldsInDownstreamOps[mappedAlias]);
                     }
                 }
 
-                var referedFieldsForUpstream = InputSchema
+                var referredFieldsForUpstream = InputSchema
                     .Where(f => f is EntityField).Cast<EntityField>()
                     .ToDictionary(kv => kv.FieldAlias, kv => kv);
 
                 // Some operators has additional fields may get referenced even they are not in output schema
                 // Such as in WHERE
                 // Child logical operator class implement this and does the addition
-                AppendReferencedProperties(referedFieldsForUpstream);
+                AppendReferencedProperties(referredFieldsForUpstream);
             }
         }
 
         /// <summary>
         /// Incremental addition of reference fields by the logical operator (E.g. WHERE/JOIN can add field references
-        /// in addition to those already in the outschema when propagating to inschema)
+        /// in addition to those already in the outschema when propagating to inSchema)
         /// To be implemented by each Logical Operator class
         /// </summary>
-        /// <param name="entityFields">A list of avaialble entities (with bound fields) in the input for this operator</param>
+        /// <param name="entityFields">A list of available entities (with bound fields) in the input for this operator</param>
         internal abstract void AppendReferencedProperties(IDictionary<string, EntityField> entityFields);
 
         /// <summary>
@@ -373,7 +373,7 @@ namespace openCypherTranspiler.LogicalPlanner
 
         internal virtual void PropagateOutSchema()
         {
-            // Default implmementation is that output schema doesn't change
+            // Default implementation is that output schema doesn't change
             CopyFieldInfoHelper(OutputSchema, InputSchema);
         }
 
@@ -508,10 +508,10 @@ namespace openCypherTranspiler.LogicalPlanner
             Limit = limit;
         }
 
-        public SelectionOperator(LogicalOperator inOp, IEnumerable<(string, string)> entityInquityConds)
+        public SelectionOperator(LogicalOperator inOp, IEnumerable<(string, string)> entityInequityConds)
         {
             FilterExpression = null;
-            UnexpandedEntityInequalityConditions = entityInquityConds.ToList();
+            UnexpandedEntityInequalityConditions = entityInequityConds.ToList();
             SetInOperator(inOp);
         }
 
@@ -528,9 +528,9 @@ namespace openCypherTranspiler.LogicalPlanner
         public LimitClause Limit { get; private set; }
 
         /// <summary>
-        /// Inequality conditions to be added after binding, specificially reserved for the implied inequality
+        /// Inequality conditions to be added after binding, specifically reserved for the implied inequality
         /// conditions from MATCH clauses like MATCH (p:Person)-[a1:Acted_In]-(m:Movie)-[a2:Acted_In]-(p2:Person)
-        /// where implicity condition of a1 <> a2 must be added
+        /// where implicit condition of a1 <> a2 must be added
         /// </summary>
         public IEnumerable<(string RelAlias1, string RelAlias2)> UnexpandedEntityInequalityConditions { get; private set; }
 
@@ -636,7 +636,7 @@ namespace openCypherTranspiler.LogicalPlanner
                 {
                     if(!entityFields.ContainsKey(varName))
                     {
-                        throw new TranspilerInternalErrorException($"Entity field: '{varName}' does not exsit");
+                        throw new TranspilerInternalErrorException($"Entity field: '{varName}' does not exist");
                     }
 
                     var entity = entityFields[varName];
@@ -658,7 +658,7 @@ namespace openCypherTranspiler.LogicalPlanner
                     var propName = prop.PropertyName;
                     if (!entityFields.ContainsKey(varName))
                     {
-                        throw new TranspilerSyntaxErrorException($"entity field: \"{varName}\" not exsit");
+                        throw new TranspilerSyntaxErrorException($"entity field: \"{varName}\" not exist");
                     }
                     var entity = entityFields[varName];
                     entity.AddReferenceFieldAlias(fieldName);
@@ -711,7 +711,7 @@ namespace openCypherTranspiler.LogicalPlanner
                 if (map.Value.Field is EntityField)
                 {
                     // This can only be direct exposure of entity (as opposed to deference of a particular property)
-                    // We just copy of the fields that the entity can potentially be deferenced
+                    // We just copy of the fields that the entity can potentially be dereferenced
                     Debug.Assert(allPropertyReferences.Count() == 1);
 
                     var varName = allPropertyReferences.First().VariableName;
@@ -747,7 +747,7 @@ namespace openCypherTranspiler.LogicalPlanner
                             else
                             {
                                 // entity field reference in a single field expression
-                                // this is valid only in handful situaions, such as Count(d), Count(distinct(d))
+                                // this is valid only in handful situations, such as Count(d), Count(distinct(d))
                                 // in such case, we populate the Entity object with correct entity type so that code generator can use it later
                                 Debug.Assert(matchedField is EntityField);
                                 var matchedEntity = matchedField as EntityField;
@@ -784,42 +784,7 @@ namespace openCypherTranspiler.LogicalPlanner
 
         internal override void AppendReferencedProperties(IDictionary<string, EntityField> entityFields)
         {
-            /*
-            // Adding more logic here, as some of upstream selection operator is selection operator, then the extra field in order 
-            // by clause need to flow down to the referenced field.
-            if (InOperator is SelectionOperator)
-            {
-                var preSelectionOp = (InOperator as SelectionOperator);
-                var orderExpr = preSelectionOp?.OrderByExpressions;
-                if (orderExpr?.Count() > 0)
-                {
-                    var propList = orderExpr
-                        .SelectMany(n => n.InnerExpression.GetChildrenQueryExpressionType<QueryExpressionProperty>())
-                        .Where(p => p.PropertyName != null && p.VariableName != null)
-                        .GroupBy(l => l.VariableName)
-                        ?.ToDictionary(p => p.Key, p => p.Select(n => n.PropertyName));
-                    // looking for new entity fields in the selection operator and then add to the entity field reference dictionary
-                    if (propList != null)
-                    {
-                        foreach(var entry in propList)
-                        {
-                            foreach(var propertyName in entry.Value)
-                            {
-                                if (entityFields.ContainsKey(entry.Key) && !entityFields[entry.Key].ReferencedFieldAliases.Contains(propertyName))
-                                {
-                                    var entity = entityFields[entry.Key];
-                                    entity.AddReferenceFieldAlias(propertyName);
-                                    // update output schema reference field at the same time.
-                                    var outputEntity = OutputSchema.Where(n => n is EntityField && n.FieldAlias == entry.Key);
-                                    Debug.Assert(outputEntity.Count() == 1);
-                                    outputEntity.Cast<EntityField>().First().AddReferenceFieldAlias(propertyName);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            */
+            // NOOP. For projection, all referenced properties are in output schema already and no extra need to be added.
         }
     }
 
@@ -924,8 +889,8 @@ namespace openCypherTranspiler.LogicalPlanner
             public enum JoinKeyPairType
             {
                 None,
-                Source, // Node join to Rel's SourceId
-                Sink,   // Node join to Rel's SinkId
+                Source, // Node join to Relationship's SourceId
+                Sink,   // Node join to Relationship's SinkId
                 Either, // Node allowed to join either Source or Sink, whichever is applicable
                 Both,   // Node join to both source and sink
                 NodeId, // Node to node join
@@ -1011,7 +976,7 @@ namespace openCypherTranspiler.LogicalPlanner
                 if (matchOutFields.Count() > 1)
                 {
                     // In case of join by node ids between left and right input (such as in MATCH .. OPTIONAL MATCH ... WHERE case)
-                    // we will take the from left side and ignore dups
+                    // we will take the from left side and ignore duplications
                     // otherwise throws exception
                     if (!JoinPairs.All(jp => jp.Type == JoinKeyPair.JoinKeyPairType.NodeId))
                     {

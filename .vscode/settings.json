@@ -1,7 +1,21 @@
 {
   "cSpell.words": [
-    "transpiler",
+    "SQLDB",
+    "Cmds",
+    "ltrim",
+    "rtrim",
+    "stdev",
+    "stdevp",
+    "ISQLDB",
+    "cond",
+    "conds",
+    "npipe",
+    "octestdb",
     "transpiled",
+    "transpiler",
     "transpiling"
+  ],
+  "cSpell.ignoreWords": [
+    "dbsql"
   ]
 }
