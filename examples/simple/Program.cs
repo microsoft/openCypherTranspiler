@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.RegularExpressions;
 using openCypherTranspiler.Common.GraphSchema;
 using openCypherTranspiler.LogicalPlanner;
 using openCypherTranspiler.openCypherParser;
@@ -8,6 +9,14 @@ using openCypherTranspiler.SQLRenderer;
 
 namespace Simple
 {
+    public static class StringHelper
+    {
+        public static string StripMargin(this string s)
+        {
+            return Regex.Replace(s, @"[ \t]+\|", string.Empty);
+        }
+    }
+
     class Program
     {
         class SimpleProvider : ISQLDBSchemaProvider
@@ -150,11 +159,14 @@ namespace Simple
 
         static void Main(string[] args)
         {
+            // To run this program directly after build, in shell, type:
+            //   dotnet run bin/Debug/netcoreapp2.1/simple.dll
+
             var cypherQueryText = @"
-                MATCH (d:device)-[:belongsTo]->(t:tenant)
-                MATCH (d)-[:runs]->(a:app)
-                RETURN t.id as TenantId, a.AppName as AppName, COUNT(d) as DeviceCount
-            ";
+                |MATCH (d:device)-[:belongsTo]->(t:tenant)
+                |MATCH (d)-[:runs]->(a:app)
+                |RETURN t.id as TenantId, a.AppName as AppName, COUNT(d) as DeviceCount
+            ".StripMargin();
 
             Console.WriteLine("Input openCypher Query:");
             Console.WriteLine(cypherQueryText);

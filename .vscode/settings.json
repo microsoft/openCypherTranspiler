@@ -1,24 +1,28 @@
 {
   "cSpell.words": [
     "SQLDB",
-    "Cmds",
-    "ltrim",
-    "rtrim",
-    "stdev",
-    "stdevp",
+    "transpiled",
+    "transpiler",
+    "transpiling",
+    "equijoin",
+    "ANTLR"
+  ],
+  "cSpell.ignoreWords": [
+    "dbsql",
     "ISQLDB",
     "cond",
     "conds",
     "npipe",
     "octestdb",
-    "transpiled",
-    "transpiler",
-    "transpiling",
+    "Cmds",
+    "ltrim",
+    "rtrim",
+    "stdev",
+    "stdevp",
     "nvarchar",
     "ISNULL",
-    "equijoin"
-  ],
-  "cSpell.ignoreWords": [
-    "dbsql"
+    "repos",
+    "RDBMS",
+    "opencode"
   ]
 }

@@ -22,15 +22,22 @@ The library, written in [.Net Core](https://dotnet.microsoft.com/download), is c
 ## Using the library
 
 ```CSharp
-// To Be Provided
+var cypherQueryText = @"
+    MATCH (d:device)-[:belongsTo]->(t:tenant)
+    MATCH (d)-[:runs]->(a:app)
+    RETURN t.id as TenantId, a.AppName as AppName, COUNT(d) as DeviceCount
+";
+
+var graphDef = new SimpleProvider();
+var plan = LogicalPlan.ProcessQueryTree(OpenCypherParser.Parse(cypherQueryText), graphDef);
+var sqlRender = new SQLRenderer(graphDef);
+var tSqlQuery = sqlRender.RenderPlan(plan);
+
+Console.WriteLine("Transpiled T-SQL query:");
+Console.WriteLine(tSqlQuery);
+
 ```
-
-
-## Build on top of this library
-
-```CSharp
-// To Be Provided
-```
+See the full examples in [examples](docs/examples) folder.
 
 
 ## Test designs
@@ -46,9 +53,8 @@ dotnet test
 
 ### Current work in Progress
 * Publish NuGet packages
-* Update docs and helps
 * Inline conditions with node labels (e.g. MATCH (n:))
-* list, collect, UNWIND support
+* List, collect, UNWIND support
 
 ### Issues to address on the horizon
 * MATCH pattern with unspecified labels or label patterns maps to more than a single label/relationship type

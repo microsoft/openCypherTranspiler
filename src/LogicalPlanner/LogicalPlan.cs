@@ -25,7 +25,7 @@ namespace openCypherTranspiler.LogicalPlanner
     {
         private ILoggable _logger;
 
-        public LogicalPlan(ILoggable logger)
+        public LogicalPlan(ILoggable logger = null)
         {
             _logger = logger;
         }
