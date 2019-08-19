@@ -10,9 +10,9 @@ using openCypherTranspiler.openCypherParser.Common;
 namespace openCypherTranspiler.openCypherParser.AST
 {
     /// <summary>
-    /// Lookup table for implicit conversions between primitive types
+    /// Generated lookup table for implicit conversions between primitive types
     /// </summary>
-    public static class CoersionTables
+    public static class TypeCoersionTables
     {
         public static readonly IDictionary<(BinaryOperator OpType, Type Op1Type, Type Op2Type), Type> CoersionTableForValueType = new Dictionary<(BinaryOperator OpType, Type Op1Type, Type Op2Type), Type>()
         {

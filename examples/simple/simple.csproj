@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RestoreSources>$(RestoreSources);../../src/Common/bin/Debug;../../src/openCypherParser/bin/Debug;../../src/LogicalPlanner/bin/Debug;../../src/SQLRenderer/bin/Debug;https://api.nuget.org/v3/index.json</RestoreSources>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>netcoreapp2.1</TargetFramework>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="openCypherTranspiler.Common" Version="0.1.0" />
+    <PackageReference Include="openCypherTranspiler.openCypherParser" Version="0.1.0" />
+    <PackageReference Include="openCypherTranspiler.LogicalPlanner" Version="0.1.0" />
+    <PackageReference Include="openCypherTranspiler.SQLRenderer" Version="0.1.0" />
+  </ItemGroup>
+
+</Project>

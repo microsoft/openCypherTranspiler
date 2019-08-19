@@ -214,7 +214,7 @@ namespace openCypherTranspiler.SQLRenderer.Test
                     }
                     break;
                 }
-                catch (SqlException e)
+                catch (SqlException)
                 {
                     if (retry < retriesMax)
                     {
@@ -332,8 +332,10 @@ namespace openCypherTranspiler.SQLRenderer.Test
 
         private string TranspileToSQL(string cypherQueryText)
         {
+            var parser = new OpenCypherParser(_logger);
+            var queryNode = parser.Parse(cypherQueryText);
             var plan = LogicalPlan.ProcessQueryTree(
-                    OpenCypherParser.Parse(cypherQueryText, _logger),
+                    parser.Parse(cypherQueryText),
                     _graphDef,
                     _logger);
             var sqlRender = new SQLRenderer(_graphDef, _logger);
@@ -396,13 +398,11 @@ WITH p.Name as PersonName, m.Title as MovieTitle, CASE WHEN p.Name = 'Tom Hanks'
 WHERE PersonName starts with 'T'
 RETURN PersonName, MovieTitle,NameFlag, 
 CASE WHEN PersonName = 'Tom Hanks' THEN 1 WHEN PersonName starts with 'Tom' THEN 2 WHEN PersonName starts with 'T' THEN 3 ELSE 0 END as NameFlag2
-ORDER BY PersonName, MovieTitle
-LIMIT 100
 ";
                 RunQueryAndCompare(queryText);
             }
 
-            // swiching entities aliases 
+            // switching entities aliases 
             {
                 var queryText = @"
 MATCH (p:Person)-[a:ACTED_IN]->(m:Movie)
@@ -561,13 +561,13 @@ LIMIT 20
 MATCH (p:Person)-[a:ACTED_IN]->(m:Movie)
 WITH DISTINCT m.Title as Title, p.Name as Name
 WHERE a.Title <> 'A'
-RETURN  Title, Name
+RETURN Title, Name
     ";
                     TranspileToSQL(queryText);
                 }
                 catch (TranspilerSyntaxErrorException e)
                 {
-                    Assert.IsTrue(e.Message.Contains("entity field: \"a\" not exsit"));
+                    Assert.IsTrue(e.Message.Contains("'a' which does not exist"));
                     expectedExceptionThrown = true;
                 }
                 Assert.IsTrue(expectedExceptionThrown);
@@ -582,14 +582,14 @@ RETURN  Title, Name
                     var queryText = @"
 MATCH (p:Person)-[a:ACTED_IN]->(m:Movie)
 WITH DISTINCT m.Title as Title, p.Name as Name
-WHERE Titl <> 'A'
+WHERE TitleNotExist <> 'A'
 RETURN  Title, Name
     ";
                     TranspileToSQL(queryText);
                 }
                 catch (TranspilerSyntaxErrorException e)
                 {
-                    Assert.IsTrue(e.Message.Contains("Titl not existed"));
+                    Assert.IsTrue(e.Message.Contains("'TitleNotExist' does not exist"));
                     expectedExceptionThrown = true;
                 }
                 Assert.IsTrue(expectedExceptionThrown);
@@ -793,7 +793,7 @@ LIMIT 11
                 RunQueryAndCompare(queryText);
             }
 
-            // order by nested under with statement
+            // order by nested under WITH statement
             {
                 var queryText = @"
 MATCH (p:Person)-[a:ACTED_IN]->(m:Movie)
@@ -808,7 +808,7 @@ RETURN Name2, Title
                 RunQueryAndCompare(queryText);
             }
 
-            // order by nested undet return statement
+            // order by nested under return statement
             {
                 var queryText = @"
 MATCH (p:Person)-[a:ACTED_IN]->(m:Movie)
@@ -821,7 +821,7 @@ LIMIT 20
                 RunQueryAndCompare(queryText);
             }
 
-            // order by nested undet return statement
+            // order by nested under return statement
             {
                 var queryText = @"
 MATCH (p:Person)-[a:ACTED_IN]->(m:Movie)

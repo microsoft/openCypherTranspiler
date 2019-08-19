@@ -37,8 +37,8 @@ namespace openCypherTranspiler.LogicalPlanner.Test
 
         private LogicalPlan RunQueryAndDumpTree(IGraphSchemaProvider graphDef, string cypherQueryText)
         {
-            var queryNode = OpenCypherParser.Parse(cypherQueryText, _logger);
-
+            var parser = new OpenCypherParser(_logger);
+            var queryNode = parser.Parse(cypherQueryText);
             var planner = LogicalPlan.ProcessQueryTree(queryNode, graphDef);
 
             Assert.IsNotNull(planner.StartingOperators);
@@ -140,9 +140,9 @@ MATCH (p:Person)-[a:ACTED_IN]->(m:Movie)
 RETURN p.Name, m.Title
 "
                 );
-                // TODO: structural verification
                 Assert.IsTrue(lp.StartingOperators.Count() > 0);
                 Assert.IsTrue(lp.TerminalOperators.Count() == 1);
+                Assert.IsTrue(lp.TerminalOperators.First().GetAllUpstreamOperatorsOfType<JoinOperator>().All(o => o.Type == JT.Inner));
             }
 
             // Basic test with optional match
@@ -156,12 +156,13 @@ return p.Name as Name1, p2.Name as Name2, m.Title as Title, r.Rating as Rating1,
                 // TODO: structural verification
                 Assert.IsTrue(lp.StartingOperators.Count() > 0);
                 Assert.IsTrue(lp.TerminalOperators.Count() == 1);
+                Assert.IsTrue(lp.TerminalOperators.First().GetAllUpstreamOperatorsOfType<JoinOperator>().Any(o => o.Type == JT.Left));
                 // nullable no change after optional match
-                Assert.IsTrue((lp.TerminalOperators.First().OutputSchema.First(f => f.FieldAlias == "Name1") as SingleField).FieldType == typeof(string));
-                Assert.IsTrue((lp.TerminalOperators.First().OutputSchema.First(f => f.FieldAlias == "Name2") as SingleField).FieldType == typeof(string));
+                Assert.IsTrue((lp.TerminalOperators.First().OutputSchema.First(f => f.FieldAlias == "Name1") as ValueField).FieldType == typeof(string));
+                Assert.IsTrue((lp.TerminalOperators.First().OutputSchema.First(f => f.FieldAlias == "Name2") as ValueField).FieldType == typeof(string));
                 // non nullable changed to nullable after optional match
-                Assert.IsTrue((lp.TerminalOperators.First().OutputSchema.First(f => f.FieldAlias == "Rating1") as SingleField).FieldType == typeof(int));
-                Assert.IsTrue((lp.TerminalOperators.First().OutputSchema.First(f => f.FieldAlias == "Rating2") as SingleField).FieldType == typeof(int?));
+                Assert.IsTrue((lp.TerminalOperators.First().OutputSchema.First(f => f.FieldAlias == "Rating1") as ValueField).FieldType == typeof(int));
+                Assert.IsTrue((lp.TerminalOperators.First().OutputSchema.First(f => f.FieldAlias == "Rating2") as ValueField).FieldType == typeof(int?));
             }
 
             // Basic test with WITH and OPTIONAL match
@@ -176,20 +177,7 @@ RETURN p.Name, m.Title
                 // TODO: structural verification
                 Assert.IsTrue(lp.StartingOperators.Count() > 0);
                 Assert.IsTrue(lp.TerminalOperators.Count() == 1);
-            }
-
-            // Basic test with plan tree optimization that collapse pure MATCHes
-            {
-                var lp = RunQueryAndDumpTree(graphDef, @"
-MATCH (p:Person)-[a:ACTED_IN]->(m:Movie)
-MATCH (p)-[p2:PRODUCED]->(m)
-OPTIONAL MATCH (p)-[d:DIRECTED]->(m)
-RETURN p.Name, m.Title
-"
-                );
-                // TODO: structural verification
-                Assert.IsTrue(lp.StartingOperators.Count() > 0);
-                Assert.IsTrue(lp.TerminalOperators.Count() == 1);
+                Assert.IsTrue(lp.TerminalOperators.First().GetAllUpstreamOperatorsOfType<JoinOperator>().Any(o => o.Type == JT.Left));
             }
 
             // Duplicated match patterns
@@ -201,12 +189,13 @@ OPTIONAL MATCH (p)-[d:DIRECTED]->(m)
 RETURN p.Name, m.Title
 "
                 );
-                // TODO: structural verification
+                // TODO: structural verification for duplication removal
                 Assert.IsTrue(lp.StartingOperators.Count() > 0);
                 Assert.IsTrue(lp.TerminalOperators.Count() == 1);
+                Assert.IsTrue(lp.TerminalOperators.First().GetAllUpstreamOperatorsOfType<JoinOperator>().Any(o => o.Type == JT.Left));
             }
 
-            // Functions and WITH with additional returns
+            // Optional match follows WITH
             {
                 var lp = RunQueryAndDumpTree(graphDef, @"
 MATCH (p:Person)-[a:ACTED_IN]->(m:Movie), (p)-[p2:PRODUCED]->(m)
@@ -219,6 +208,7 @@ RETURN p.Name, m.Title, ActedRoles, ReviewRating, ReviewSummary
                 // TODO: structural verification
                 Assert.IsTrue(lp.StartingOperators.Count() > 0);
                 Assert.IsTrue(lp.TerminalOperators.Count() == 1);
+                Assert.IsTrue(lp.TerminalOperators.First().GetAllUpstreamOperatorsOfType<JoinOperator>().Any(o => o.Type == JT.Left));
             }
 
             // Twisted alias for with/return entities
@@ -244,9 +234,21 @@ MATCH (p:Person)-[:FOLLOWS]->(p2:Person)
 RETURN p.Name as Name1, m.Title as Title1, p2.Name as Name2, m2.Title as Title2
 "
                 );
-                // TODO: structural verification
                 Assert.IsTrue(lp.StartingOperators.Count() > 0);
                 Assert.IsTrue(lp.TerminalOperators.Count() == 1);
+                Assert.IsTrue(lp.TerminalOperators.First().GetAllUpstreamOperatorsOfType<JoinOperator>().Any(o => o.Type == JT.Inner));
+            }
+
+            // Cross Join
+            {
+                var lp = RunQueryAndDumpTree(graphDef, @"
+MATCH (p:Person), (m:Movie)
+RETURN p.Name as Name1, m.Title as Title1
+"
+                );
+                Assert.IsTrue(lp.StartingOperators.Count() > 0);
+                Assert.IsTrue(lp.TerminalOperators.Count() == 1);
+                Assert.IsTrue(lp.TerminalOperators.First().GetAllUpstreamOperatorsOfType<JoinOperator>().Any(o => o.Type == JT.Cross));
             }
 
             // basic WHERE test
@@ -257,9 +259,9 @@ WHERE p.Name = 'Tom Hanks'
 RETURN p.Name as Name
 "
                 );
-                // TODO: structural verification
                 Assert.IsTrue(lp.StartingOperators.Count() > 0);
                 Assert.IsTrue(lp.TerminalOperators.Count() == 1);
+                Assert.IsTrue(lp.TerminalOperators.First().GetAllUpstreamOperatorsOfType<SelectionOperator>().Any(o => o.FilterExpression != null));
             }
 
             // WHERE attached to optional match
@@ -271,9 +273,11 @@ WHERE p.Name = 'Tom Hanks'
 RETURN p.Name as Name
 "
                 );
-                // TODO: structural verification
                 Assert.IsTrue(lp.StartingOperators.Count() > 0);
                 Assert.IsTrue(lp.TerminalOperators.Count() == 1);
+                Assert.IsTrue(lp.TerminalOperators.First().GetAllUpstreamOperatorsOfType<JoinOperator>().Any(o => o.Type == JT.Left));
+                Assert.IsTrue(lp.TerminalOperators.First().GetAllUpstreamOperatorsOfType<LogicalOperator>().Any(o => o.OutOperators?.Count() == 2));
+                Assert.IsTrue(lp.TerminalOperators.First().GetAllUpstreamOperatorsOfType<SelectionOperator>().Any(o => o.FilterExpression != null));
             }
 
             // WHERE attached to WITH projection
@@ -286,9 +290,65 @@ WHERE p.Name = 'Tom Hanks'
 RETURN p.Name as Name
 "
                 );
+                Assert.IsTrue(lp.StartingOperators.Count() > 0);
+                Assert.IsTrue(lp.TerminalOperators.Count() == 1);
+                Assert.IsTrue(lp.TerminalOperators.First().GetAllUpstreamOperatorsOfType<JoinOperator>().Any(o => o.Type == JT.Left));
+                Assert.IsTrue(lp.TerminalOperators.First().GetAllUpstreamOperatorsOfType<LogicalOperator>().All(o => (o.OutOperators?.Count() ?? 0) <= 1));
+                Assert.IsTrue(lp.TerminalOperators.First().GetAllUpstreamOperatorsOfType<SelectionOperator>().Any(o => o.FilterExpression != null));
+            }
+
+            // LIMIT only attached to RETURN
+            {
+                var lp = RunQueryAndDumpTree(graphDef, @"
+MATCH (p:Person)
+RETURN p.Name as Name
+LIMIT 5
+"
+                );
+                Assert.IsTrue(lp.StartingOperators.Count() > 0);
+                Assert.IsTrue(lp.TerminalOperators.Count() == 1);
+                Assert.IsTrue(lp.TerminalOperators.First().GetAllUpstreamOperatorsOfType<SelectionOperator>().Any(o => (o.Limit?.RowCount ?? 0) == 5));
+            }
+
+            // ORDER BY only attached to RETURN
+            {
+                var lp = RunQueryAndDumpTree(graphDef, @"
+MATCH (p:Person)
+RETURN p.Name as Name2
+ORDER BY Name2
+"
+                );
                 // TODO: structural verification
                 Assert.IsTrue(lp.StartingOperators.Count() > 0);
                 Assert.IsTrue(lp.TerminalOperators.Count() == 1);
+                Assert.IsTrue(lp.TerminalOperators.First().GetAllUpstreamOperatorsOfType<SelectionOperator>().Any(o => (o.OrderByExpressions?.Count() ?? 0) == 1));
+            }
+
+            // ORDER BY only attached to RETURN with implicit field reference
+            {
+                var lp = RunQueryAndDumpTree(graphDef, @"
+MATCH (p:Person)
+RETURN p.Name as Name
+ORDER BY p.id
+"
+                );
+                Assert.IsTrue(lp.StartingOperators.Count() > 0);
+                Assert.IsTrue(lp.TerminalOperators.Count() == 1);
+                Assert.IsTrue(lp.TerminalOperators.First().GetAllUpstreamOperatorsOfType<SelectionOperator>().Any(o => (o.OrderByExpressions?.Count() ?? 0) == 1));
+            }
+
+            // ORDER BY + Limit to RETURN
+            {
+                var lp = RunQueryAndDumpTree(graphDef, @"
+MATCH (p:Person)
+RETURN p.Name as Name
+ORDER BY p.Name LIMIT 3
+"
+                );
+                Assert.IsTrue(lp.StartingOperators.Count() > 0);
+                Assert.IsTrue(lp.TerminalOperators.Count() == 1);
+                Assert.IsTrue(lp.TerminalOperators.First().GetAllUpstreamOperatorsOfType<SelectionOperator>().Any(o => (o.OrderByExpressions?.Count() ?? 0) == 1));
+                Assert.IsTrue(lp.TerminalOperators.First().GetAllUpstreamOperatorsOfType<SelectionOperator>().Any(o => (o.Limit?.RowCount ?? 0) == 3));
             }
         }
 

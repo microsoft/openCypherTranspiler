@@ -11,21 +11,33 @@ This library has three main components:
 * A logic planner transforms the AST into relational query logical plan similar to the [Relational Algebra](https://en.wikipedia.org/wiki/Relational_algebra);
 * A query code renderer produces the actual query code from the logical plan. In this repository, we provides a T-SQL renderer.
 
+The above components form a pipeline where the openCypher query and the graph schema is fed to the parser and the transpiled query is the output from the code renderer:
+
+![openCypher Transpiler pipeline](docs/transpiler.svg)
+
 The library, written in [.Net Core](https://dotnet.microsoft.com/download), is cross-platform.
 
+[![Build Status](https://dev.azure.com/ms/openCypherTranspiler/_apis/build/status/microsoft.openCypherTranspiler?branchName=master)](https://dev.azure.com/ms/openCypherTranspiler/_build/latest?definitionId=191&branchName=master)
 
 ## Using the library
 
 ```CSharp
-// To Be Provided
+var cypherQueryText = @"
+    MATCH (d:device)-[:belongsTo]->(t:tenant)
+    MATCH (d)-[:runs]->(a:app)
+    RETURN t.id as TenantId, a.AppName as AppName, COUNT(d) as DeviceCount
+";
+
+var graphDef = new SimpleProvider();
+var plan = LogicalPlan.ProcessQueryTree(OpenCypherParser.Parse(cypherQueryText), graphDef);
+var sqlRender = new SQLRenderer(graphDef);
+var tSqlQuery = sqlRender.RenderPlan(plan);
+
+Console.WriteLine("Transpiled T-SQL query:");
+Console.WriteLine(tSqlQuery);
+
 ```
-
-
-## Build on top of this library
-
-```CSharp
-// To Be Provided
-```
+See the full examples in [examples](docs/examples) folder.
 
 
 ## Test designs
@@ -37,13 +49,12 @@ To run the tests, simply run under the project root folder:
 dotnet test
 ```
 
-## Roadmap
+## Road map
 
 ### Current work in Progress
 * Publish NuGet packages
-* Update docs and helps
 * Inline conditions with node labels (e.g. MATCH (n:))
-* list, collect, UNWIND support
+* List, collect, UNWIND support
 
 ### Issues to address on the horizon
 * MATCH pattern with unspecified labels or label patterns maps to more than a single label/relationship type

@@ -24,9 +24,10 @@ namespace openCypherTranspiler.openCypherParser.Test
     {
         private readonly ILoggable _logger = new TestLogger();
 
-        private QueryTreeNode RunQueryAndDumpTree(string cypherQueryText)
+        private QueryNode RunQueryAndDumpTree(string cypherQueryText)
         {
-            var queryNode = OpenCypherParser.Parse(cypherQueryText, _logger);
+            var parser = new OpenCypherParser(_logger);
+            var queryNode = parser.Parse(cypherQueryText);
             var tree = queryNode.DumpTree();
             Debug.WriteLine(tree);
             return queryNode;
@@ -61,6 +62,27 @@ RETURN m.Title AS Title, p.Name AS Name
             Assert.IsNotNull(tree.GetChildrenOfType<QueryExpressionValue>().Any(expr => expr.StringValue == "Meg Ryan"));
             Assert.IsNotNull(tree.GetChildrenOfType<QueryExpressionValue>().Any(expr => expr.StringValue == "Tom Hanks"));
             Assert.IsNotNull(tree.GetChildrenOfType<QueryExpressionValue>().Any(expr => expr.StringValue == "Apollo 13"));
+        }
+
+        [TestMethod]
+        public void BasicOrderByLimitTest()
+        {
+            var tree = RunQueryAndDumpTree(@"
+MATCH (p:Person)-[:ACTED_IN]->(m:Movie)
+WHERE (p.Name = 'Meg Ryan' OR p.Name = 'Tom Hanks') AND m.Title = 'Apollo 13'
+RETURN m.Title AS Title, p.Name AS Name
+ORDER BY m.Title
+LIMIT 5
+"
+            );
+
+            var expressionParsed = tree.GetChildrenOfType<QueryExpressionBinary>();
+            Assert.IsNotNull(tree.GetChildrenOfType<QueryExpressionBinary>().Count() == 2);
+            Assert.IsNotNull(tree.GetChildrenOfType<QueryExpressionValue>().Any(expr => expr.StringValue == "Meg Ryan"));
+            Assert.IsNotNull(tree.GetChildrenOfType<QueryExpressionValue>().Any(expr => expr.StringValue == "Tom Hanks"));
+            Assert.IsNotNull(tree.GetChildrenOfType<QueryExpressionValue>().Any(expr => expr.StringValue == "Apollo 13"));
+            Assert.IsNotNull(tree.GetChildrenOfType<SortItem>().Any(c => c.GetChildrenOfType<QueryExpressionProperty>().Any(expr => expr.VariableName == "m" && expr.PropertyName == "Title")));
+            Assert.IsNotNull(tree.GetChildrenOfType<LimitClause>().Any(c => c.RowCount == 5));
         }
 
         [TestMethod]

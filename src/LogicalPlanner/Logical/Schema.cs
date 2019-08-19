@@ -12,7 +12,7 @@ using openCypherTranspiler.Common.Exceptions;
 namespace openCypherTranspiler.LogicalPlanner
 {
     /// <summary>
-    /// a field of a schema
+    /// represents a single alias (could be a value column or an entity) in a schema
     /// </summary>
     public abstract class Field
     {
@@ -39,11 +39,11 @@ namespace openCypherTranspiler.LogicalPlanner
     }
 
     /// <summary>
-    /// A field which is an entity (a set of columns forming a node or edge stream/stream group)
+    /// A field which is an entity (a set of value fields derived from node or relationship entities)
     /// </summary>
     public class EntityField : Field
     {
-        private ISet<string> _referencedAliases = new HashSet<string>();
+        private ISet<string> _referencedFieldNames = new HashSet<string>();
 
         public EntityField(string alias, string entityName, EntityType type) : base(alias)
         {
@@ -69,12 +69,12 @@ namespace openCypherTranspiler.LogicalPlanner
             this.BoundEntityName = fieldSrc.BoundEntityName;
             this.BoundSourceEntityName = fieldSrc.BoundSourceEntityName;
             this.BoundSinkEntityName = fieldSrc.BoundSinkEntityName;
-            this.NodeJoinField = fieldSrc.NodeJoinField?.Clone() as SingleField;
-            this.RelSinkJoinField = fieldSrc.RelSinkJoinField?.Clone() as SingleField;
-            this.RelSourceJoinField = fieldSrc.RelSourceJoinField?.Clone() as SingleField;
-            this.EncapsulatedFields = fieldSrc.EncapsulatedFields?.Select(f => f.Clone() as SingleField).ToList();
-            _referencedAliases.Clear();
-            this.AddReferenceFieldAliases(fieldSrc.ReferencedFieldAliases?.ToList());
+            this.NodeJoinField = fieldSrc.NodeJoinField?.Clone() as ValueField;
+            this.RelSinkJoinField = fieldSrc.RelSinkJoinField?.Clone() as ValueField;
+            this.RelSourceJoinField = fieldSrc.RelSourceJoinField?.Clone() as ValueField;
+            this.EncapsulatedFields = fieldSrc.EncapsulatedFields?.Select(f => f.Clone() as ValueField).ToList();
+            _referencedFieldNames.Clear();
+            this.AddReferenceFieldNames(fieldSrc.ReferencedFieldAliases?.ToList());
         }
 
         public enum EntityType
@@ -113,29 +113,29 @@ namespace openCypherTranspiler.LogicalPlanner
         public EntityType Type { get; set; }
 
         /// <summary>
-        /// List of fields that this entity can expand into (namely, property reference) 
+        /// List of fields that this entity can expand into
         /// </summary>
-        public IList<SingleField> EncapsulatedFields { get; set; }
+        public IList<ValueField> EncapsulatedFields { get; set; }
 
         /// <summary>
-        /// Used for keep tracking what properties of this entity were actually accessed
+        /// Used for keep tracking what fields of this entity were actually accessed
         /// </summary>
-        public IReadOnlyCollection<string> ReferencedFieldAliases { get { return _referencedAliases.ToList().AsReadOnly(); } }
+        public IReadOnlyCollection<string> ReferencedFieldAliases { get { return _referencedFieldNames.ToList().AsReadOnly(); } }
 
         /// <summary>
         /// The field name for the node's join key
         /// </summary>
-        public SingleField NodeJoinField { get; set; }
+        public ValueField NodeJoinField { get; set; }
 
         /// <summary>
         /// The field name for the edge's source join key
         /// </summary>
-        public SingleField RelSourceJoinField { get; set; }
+        public ValueField RelSourceJoinField { get; set; }
 
         /// <summary>
         /// The field name for the relationship's sink join key
         /// </summary>
-        public SingleField RelSinkJoinField { get; set; }
+        public ValueField RelSinkJoinField { get; set; }
 
 
         public override string ToString()
@@ -148,49 +148,50 @@ namespace openCypherTranspiler.LogicalPlanner
             return new EntityField(this);
         }
 
-        public void AddReferenceFieldAlias(string fieldAlias)
+        public void AddReferenceFieldName(string fieldName)
         {
-            if(EncapsulatedFields.All(n => n.FieldAlias != fieldAlias))
+            if (!EncapsulatedFields.Any(n => n.FieldAlias == fieldName))
             {
-                throw new TranspilerSyntaxErrorException($"field alias {fieldAlias} not existed in entity:{EntityName}.");
+                throw new TranspilerSyntaxErrorException($"Entity '{EntityName}' does not have a field named '{fieldName}'.");
             }
-            else if(!_referencedAliases.Contains(fieldAlias))
+            
+            if (!_referencedFieldNames.Contains(fieldName))
             {
-                _referencedAliases.Add(fieldAlias);
+                _referencedFieldNames.Add(fieldName);
             }
         }
 
-        public void AddReferenceFieldAliases(IEnumerable<string> fieldAliases)
+        public void AddReferenceFieldNames(IEnumerable<string> fieldNames)
         {
-            fieldAliases.ToList().ForEach(a => AddReferenceFieldAlias(a));
+            fieldNames.ToList().ForEach(a => AddReferenceFieldName(a));
         }
 
     }
 
     /// <summary>
-    /// A field which is a column
+    /// A field which is a scalar value column
     /// </summary>
-    public class SingleField : Field
+    public class ValueField : Field
     {
-        public SingleField(string alias) : base(alias) { }
+        public ValueField(string alias) : base(alias) { }
 
         /// <summary>
         /// Copy constructor
         /// </summary>
         /// <param name="field"></param>
-        public SingleField(SingleField field) : base(field.FieldAlias)
+        public ValueField(ValueField field) : base(field.FieldAlias)
         {
             Copy(field);
         }
 
-        public SingleField(string alias, Type fieldType) : base(alias)
+        public ValueField(string alias, Type fieldType) : base(alias)
         {
             FieldType = fieldType;
         }
 
         public override void Copy(Field field)
         {
-            var fieldSrc = field as SingleField;
+            var fieldSrc = field as ValueField;
             Debug.Assert(fieldSrc != null);
             this.FieldType = fieldSrc.FieldType;
         }
@@ -205,7 +206,7 @@ namespace openCypherTranspiler.LogicalPlanner
 
         public override Field Clone()
         {
-            return new SingleField(this);
+            return new ValueField(this);
         }
     }
 
