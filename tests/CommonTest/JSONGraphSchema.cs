@@ -65,7 +65,9 @@ namespace openCypherTranspiler.CommonTest
                         .Select(s => (new EntityProperty()
                         {
                             PropertyName = s.PropertyName.ToString(),
-                            DataType = Type.GetType(s.PropertyType.ToString())
+                            DataType = Type.GetType(s.PropertyType.ToString()),
+                            PropertyType = EntityProperty.PropertyDefinitionType.RegularProperty
+
                         })).ToList(),
                     SourceIdProperty = new EntityProperty()
                     {

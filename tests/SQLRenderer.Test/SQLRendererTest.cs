@@ -834,5 +834,57 @@ LIMIT 20
             }
 
         }
+
+        [TestMethod]
+        public void WhereClauseTest()
+        {
+            // 1: WHERE under MATCH statement
+            {
+                var queryText = @"
+MATCH (p:Person)-[a:ACTED_IN]->(m:Movie)
+WHERE p.Name starts with 'M'
+WITH  p.Name as Name, m.Title as Title
+RETURN Name
+";
+                RunQueryAndCompare(queryText);
+            }
+
+            // 2: WHERE under WITH statement w/o DISTINCT or aggregation function
+            {
+                var queryText = @"
+MATCH (p:Person)-[a:ACTED_IN]->(m:Movie)
+WITH  p.Name as Name, m.Title as Title, m.Tagline as Tagline
+WHERE Name starts with 'Bill' and m.Title starts with 'A'
+RETURN Name, Title, Tagline
+";
+                RunQueryAndCompare(queryText);
+            }
+
+            // 3: WHERE under WITH statement w/ DISTINCT
+            // WHERE Name starts with 'Bill' and m.Title starts with 'A'
+
+            {
+                var queryText = @"
+MATCH (p:Person)-[a:ACTED_IN]->(m:Movie)
+WITH  DISTINCT p.Name as Name, m.Title as Title, m.Tagline as Tagline, p
+WHERE p.Name starts with 'Bill' and Title starts with 'A'
+RETURN Name, Title, Tagline
+";
+                RunQueryAndCompare(queryText);
+            }
+
+            // 4: WHERE under WITH statement w/ aggregation function
+            {
+                var queryText = @"
+MATCH (p:Person)-[a:ACTED_IN]->(m:Movie)
+WITH  p.Name as Name, COUNT(m.Title) as MovieCount
+WHERE Name starts with 'Bill' and MovieCount >= 3
+RETURN Name, MovieCount
+";
+                RunQueryAndCompare(queryText);
+            }
+
+        }
+
     }
 }
