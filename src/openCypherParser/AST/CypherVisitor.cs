@@ -530,10 +530,12 @@ namespace openCypherTranspiler.openCypherParser.AST
             });
         }
 
-        // the order of parsing types referred from following:
-        // https://docs.microsoft.com/en-us/dotnet/csharp/language-reference/builtin-types/integral-numeric-types
+
         QueryExpressionValue ParseIntegerLiteral(string literal)
         {
+            // the order of parsing types referred from following:
+            // https://docs.microsoft.com/en-us/dotnet/csharp/language-reference/builtin-types/integral-numeric-types
+
             // sbyte was excluded due to no equivalent type in sql type mapping
             if (byte.TryParse(literal, out byte byteValue))
             {
@@ -586,7 +588,7 @@ namespace openCypherTranspiler.openCypherParser.AST
             }
             else
             {
-                throw new TranspilerNotSupportedException($"Integer literal :{literal} out of supported range");
+                throw new TranspilerNotSupportedException($"Integer literal :{literal} ");
             }
         }
 
