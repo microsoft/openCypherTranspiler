@@ -46,7 +46,13 @@ namespace openCypherTranspiler.openCypherParser.AST
                       value is long ||
                       value is float ||
                       value is double ||
-                      value is DateTime))
+                      value is DateTime ||
+                      value is sbyte ||
+                      value is byte ||
+                      value is short ||
+                      value is ushort ||
+                      value is uint ||
+                      value is ulong ))
                 {
                     throw new TranspilerNotSupportedException($"Type {value.GetType()}");
                 }
