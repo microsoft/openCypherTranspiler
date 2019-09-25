@@ -530,6 +530,68 @@ namespace openCypherTranspiler.openCypherParser.AST
             });
         }
 
+
+        QueryExpressionValue ParseIntegerLiteral(string literal)
+        {
+            // the order of parsing types referred from following:
+            // https://docs.microsoft.com/en-us/dotnet/csharp/language-reference/builtin-types/integral-numeric-types
+
+            // sbyte was excluded due to no equivalent type in sql type mapping
+            if (byte.TryParse(literal, out byte byteValue))
+            {
+                return new QueryExpressionValue()
+                {
+                    Value = byteValue
+                };
+            }
+            else if (short.TryParse(literal, out short shortValue))
+            {
+                return new QueryExpressionValue()
+                {
+                    Value = shortValue
+                };
+            }
+            else if (ushort.TryParse(literal, out ushort ushortValue))
+            {
+                return new QueryExpressionValue()
+                {
+                    Value = ushortValue
+                };
+            }
+            else if (int.TryParse(literal, out int intValue))
+            {
+                return new QueryExpressionValue()
+                {
+                    Value = intValue
+                };
+            }
+            else if (uint.TryParse(literal, out uint uintValue))
+            {
+                return new QueryExpressionValue()
+                {
+                    Value = uintValue
+                };
+            }
+            else if (long.TryParse(literal, out long longValue))
+            {
+                return new QueryExpressionValue()
+                {
+                    Value = longValue
+                };
+            }
+            else if (ulong.TryParse(literal, out ulong ulongValue))
+            {
+                return new QueryExpressionValue()
+                {
+                    Value = ulongValue
+                };
+            }
+            else
+            {
+                throw new TranspilerNotSupportedException($"Integer literal :{literal} ");
+            }
+        }
+
         #endregion Helper functions
 
         public CypherVisitor(ILoggable logger)
@@ -1960,11 +2022,7 @@ namespace openCypherTranspiler.openCypherParser.AST
 
             _logger?.LogVerbose("{0}: {1}", "VisitOC_IntegerLiteral", context.GetText());
             var intText = context.GetChild(0).GetText();
-            return new QueryExpressionValue()
-            {
-                // TODO: improve the parsing for int number intead of using the C# built int default parser
-                Value = long.Parse(intText)
-            };
+            return ParseIntegerLiteral(intText);
         }
         public override object VisitOC_DoubleLiteral([NotNull] CypherParser.OC_DoubleLiteralContext context)
         {
