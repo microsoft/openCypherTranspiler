@@ -13,6 +13,7 @@ using openCypherTranspiler.openCypherParser;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using System.Linq;
 using JT = openCypherTranspiler.LogicalPlanner.JoinOperator.JoinType;
+using System;
 
 namespace openCypherTranspiler.LogicalPlanner.Test
 {
@@ -349,6 +350,30 @@ ORDER BY p.Name LIMIT 3
                 Assert.IsTrue(lp.TerminalOperators.Count() == 1);
                 Assert.IsTrue(lp.TerminalOperators.First().GetAllUpstreamOperatorsOfType<SelectionOperator>().Any(o => (o.OrderByExpressions?.Count() ?? 0) == 1));
                 Assert.IsTrue(lp.TerminalOperators.First().GetAllUpstreamOperatorsOfType<SelectionOperator>().Any(o => (o.Limit?.RowCount ?? 0) == 3));
+            }
+        }
+
+        [TestMethod]
+        public void TypeEvaluationTest()
+        {
+            IGraphSchemaProvider graphDef = new JSONGraphSchema(@"./TestData/MovieGraph.json");
+            // Basic test covers type coercion and type evaluation
+            {
+                var lp = RunQueryAndDumpTree(graphDef, @"
+MATCH (p:Person)-[a:ACTED_IN]->(m:Movie)
+WITH toString(m.Released) as ReleasedStr, m.Released as ReleasedInt
+RETURN toInteger(ReleasedStr) as Released, toFloat(ReleasedStr) as ReleasedFloat, toFloat(ReleasedStr)/10.0 as ReleasedDouble, toBoolean(""true"") as ReleasedBool, toFloat(ReleasedStr)+ReleasedInt as ReleasedFloat2
+"
+                );
+
+                Assert.IsTrue(lp.StartingOperators.Count() > 0);
+                Assert.IsTrue(lp.TerminalOperators.Count() == 1);
+                Assert.IsTrue(lp.TerminalOperators.First().OutputSchema.Count == 5);
+                Assert.IsTrue(lp.TerminalOperators.First().OutputSchema.Any(o => o.FieldAlias == "Released" && ((o as ValueField)?.FieldType ?? default(Type)) == typeof(int?)));
+                Assert.IsTrue(lp.TerminalOperators.First().OutputSchema.Any(o => o.FieldAlias == "ReleasedFloat" && ((o as ValueField)?.FieldType ?? default(Type)) == typeof(float?)));
+                Assert.IsTrue(lp.TerminalOperators.First().OutputSchema.Any(o => o.FieldAlias == "ReleasedDouble" && ((o as ValueField)?.FieldType ?? default(Type)) == typeof(double?)));
+                Assert.IsTrue(lp.TerminalOperators.First().OutputSchema.Any(o => o.FieldAlias == "ReleasedBool" && ((o as ValueField)?.FieldType ?? default(Type)) == typeof(bool?)));
+                Assert.IsTrue(lp.TerminalOperators.First().OutputSchema.Any(o => o.FieldAlias == "ReleasedFloat2" && ((o as ValueField)?.FieldType ?? default(Type)) == typeof(float?)));
             }
         }
 

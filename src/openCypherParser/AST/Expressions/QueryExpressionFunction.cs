@@ -39,23 +39,23 @@ namespace openCypherTranspiler.openCypherParser.AST
         public override Type EvaluateType()
         {
             var innerType = InnerExpression.EvaluateType();
-            var isWrappedinNullable = TypeHelper.IsSystemNullableType(innerType);
+            var canBeNull = TypeHelper.CanAssignNullToType(innerType);
             switch (Function.FunctionName)
             {
                 case Common.Function.ToFloat:
-                    return isWrappedinNullable ? typeof(float?) : typeof(float);
+                    return canBeNull ? typeof(float?) : typeof(float);
                 case Common.Function.ToString:
                     return typeof(string);
                 case Common.Function.ToBoolean:
-                    return isWrappedinNullable ? typeof(bool?) : typeof(bool);
+                    return canBeNull ? typeof(bool?) : typeof(bool);
                 case Common.Function.ToInteger:
-                    return isWrappedinNullable ? typeof(int?) : typeof(int);
+                    return canBeNull ? typeof(int?) : typeof(int);
                 case Common.Function.ToDouble:
-                    return isWrappedinNullable ? typeof(long?) : typeof(long);
+                    return canBeNull ? typeof(long?) : typeof(long);
                 case Common.Function.ToLong:
-                    return isWrappedinNullable ? typeof(double?) : typeof(double);
+                    return canBeNull ? typeof(double?) : typeof(double);
                 case Common.Function.Not:
-                    return isWrappedinNullable ? typeof(bool?) : typeof(bool);
+                    return canBeNull ? typeof(bool?) : typeof(bool);
                 case Common.Function.StringContains:
                 case Common.Function.StringStartsWith:
                 case Common.Function.StringEndsWith:

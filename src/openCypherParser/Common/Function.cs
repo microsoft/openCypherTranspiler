@@ -82,6 +82,26 @@ namespace openCypherTranspiler.openCypherParser.Common
             }
         }
 
+        private static void EnsureStringType(FunctionInfo info, Type type)
+        {
+            if (!(
+                type == typeof(string)
+                ))
+            {
+                throw new TranspilerNotSupportedException($"Function {info.FunctionName} parameter of type {type.Name}");
+            }
+        }
+
+        private static void EnsureLengthType(FunctionInfo info, Type type)
+        {
+            if (!(
+                type == typeof(int) || type == typeof(long)
+                ))
+            {
+                throw new TranspilerNotSupportedException($"Function {info.FunctionName} parameter of type {type.Name}");
+            }
+        }
+
         private static void EnsureBooleanType(FunctionInfo info, Type type)
         {
             if (!(
@@ -188,7 +208,11 @@ namespace openCypherTranspiler.openCypherParser.Common
                     FunctionName = Function.StringStartsWith,
                     RequiredParameters = 2,
                     OptionalParameters = 0,
-                    ParameterChecker = EnsureParameterCountChecker
+                    ParameterChecker = (info, types) => {
+                        EnsureParameterCount(info, types.Count());
+                        EnsureStringType(info, types.First());
+                        EnsureStringType(info, types.Skip(1).First());
+                    }
                 }
             },
             { "stringendswith",  new FunctionInfo()
@@ -196,7 +220,11 @@ namespace openCypherTranspiler.openCypherParser.Common
                     FunctionName = Function.StringEndsWith,
                     RequiredParameters = 2,
                     OptionalParameters = 0,
-                    ParameterChecker = EnsureParameterCountChecker
+                    ParameterChecker = (info, types) => {
+                        EnsureParameterCount(info, types.Count());
+                        EnsureStringType(info, types.First());
+                        EnsureStringType(info, types.Skip(1).First());
+                    }
                 }
             },
             { "stringcontains",  new FunctionInfo()
@@ -204,7 +232,11 @@ namespace openCypherTranspiler.openCypherParser.Common
                     FunctionName = Function.StringContains,
                     RequiredParameters = 2,
                     OptionalParameters = 0,
-                    ParameterChecker = EnsureParameterCountChecker
+                    ParameterChecker = (info, types) => {
+                        EnsureParameterCount(info, types.Count());
+                        EnsureStringType(info, types.First());
+                        EnsureStringType(info, types.Skip(1).First());
+                    }
                 }
             },
             { "isnull",  new FunctionInfo()
@@ -228,7 +260,11 @@ namespace openCypherTranspiler.openCypherParser.Common
                     FunctionName = Function.StringLeft,
                     RequiredParameters = 2,
                     OptionalParameters = 0,
-                    ParameterChecker = EnsureParameterCountChecker
+                    ParameterChecker = (info, types) => {
+                        EnsureParameterCount(info, types.Count());
+                        EnsureStringType(info, types.First());
+                        EnsureLengthType(info, types.Skip(1).First());
+                    }
                 }
             },
             { "right", new FunctionInfo()
@@ -236,7 +272,11 @@ namespace openCypherTranspiler.openCypherParser.Common
                     FunctionName = Function.StringRight,
                     RequiredParameters = 2,
                     OptionalParameters = 0,
-                    ParameterChecker = EnsureParameterCountChecker
+                    ParameterChecker = (info, types) => {
+                        EnsureParameterCount(info, types.Count());
+                        EnsureStringType(info, types.First());
+                        EnsureLengthType(info, types.Skip(1).First());
+                    }
                 }
             },
             { "trim", new FunctionInfo()
@@ -244,7 +284,10 @@ namespace openCypherTranspiler.openCypherParser.Common
                     FunctionName = Function.StringTrim,
                     RequiredParameters = 1,
                     OptionalParameters = 0,
-                    ParameterChecker = EnsureParameterCountChecker
+                    ParameterChecker = (info, types) => {
+                        EnsureParameterCount(info, types.Count());
+                        EnsureStringType(info, types.First());
+                    }
                 }
             },
             { "ltrim", new FunctionInfo()
@@ -252,7 +295,10 @@ namespace openCypherTranspiler.openCypherParser.Common
                     FunctionName = Function.StringLTrim,
                     RequiredParameters = 1,
                     OptionalParameters = 0,
-                    ParameterChecker = EnsureParameterCountChecker
+                    ParameterChecker = (info, types) => {
+                        EnsureParameterCount(info, types.Count());
+                        EnsureStringType(info, types.First());
+                    }
                 }
             },
             { "rtrim", new FunctionInfo()
@@ -260,7 +306,10 @@ namespace openCypherTranspiler.openCypherParser.Common
                     FunctionName = Function.StringRTrim,
                     RequiredParameters = 1,
                     OptionalParameters = 0,
-                    ParameterChecker = EnsureParameterCountChecker
+                    ParameterChecker = (info, types) => {
+                        EnsureParameterCount(info, types.Count());
+                        EnsureStringType(info, types.First());
+                    }
                 }
             },
             { "toupper", new FunctionInfo()
@@ -268,7 +317,10 @@ namespace openCypherTranspiler.openCypherParser.Common
                     FunctionName = Function.StringToUpper,
                     RequiredParameters = 1,
                     OptionalParameters = 0,
-                    ParameterChecker = EnsureParameterCountChecker
+                    ParameterChecker = (info, types) => {
+                        EnsureParameterCount(info, types.Count());
+                        EnsureStringType(info, types.First());
+                    }
                 }
             },
             { "tolower", new FunctionInfo()
@@ -276,7 +328,10 @@ namespace openCypherTranspiler.openCypherParser.Common
                     FunctionName = Function.StringToLower,
                     RequiredParameters = 1,
                     OptionalParameters = 0,
-                    ParameterChecker = EnsureParameterCountChecker
+                    ParameterChecker = (info, types) => {
+                        EnsureParameterCount(info, types.Count());
+                        EnsureStringType(info, types.First());
+                    }
                 }
             },
             { "size", new FunctionInfo()
@@ -284,7 +339,10 @@ namespace openCypherTranspiler.openCypherParser.Common
                     FunctionName = Function.StringSize,
                     RequiredParameters = 1,
                     OptionalParameters = 0,
-                    ParameterChecker = EnsureParameterCountChecker
+                    ParameterChecker = (info, types) => {
+                        EnsureParameterCount(info, types.Count());
+                        EnsureStringType(info, types.First());
+                    }
                 }
             },
         };
