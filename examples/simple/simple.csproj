@@ -10,10 +10,10 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="openCypherTranspiler.Common" Version="0.1.0" />
-    <PackageReference Include="openCypherTranspiler.openCypherParser" Version="0.1.0" />
-    <PackageReference Include="openCypherTranspiler.LogicalPlanner" Version="0.1.0" />
-    <PackageReference Include="openCypherTranspiler.SQLRenderer" Version="0.1.0" />
+    <PackageReference Include="openCypherTranspiler.Common" Version="0.1.1" />
+    <PackageReference Include="openCypherTranspiler.openCypherParser" Version="0.1.1" />
+    <PackageReference Include="openCypherTranspiler.LogicalPlanner" Version="0.1.1" />
+    <PackageReference Include="openCypherTranspiler.SQLRenderer" Version="0.1.1" />
   </ItemGroup>
 
 </Project>

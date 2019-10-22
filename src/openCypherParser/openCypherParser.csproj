@@ -18,7 +18,7 @@
     <PackageTags>openCypher transpiler graph C# .NET</PackageTags>
     <RepositoryType>git</RepositoryType>
     <RepositoryUrl>https://github.com/microsoft/openCypherTranspiler/tree/master/src/openCypherParser</RepositoryUrl>
-    <VersionPrefix>0.1.0</VersionPrefix>
+    <VersionPrefix>0.1.1</VersionPrefix>
     <NoWarn>CS3021</NoWarn>
   </PropertyGroup>
 

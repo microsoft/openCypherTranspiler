@@ -14,7 +14,7 @@ namespace openCypherTranspiler.Common.Utils
         /// <summary>
         /// Check if null value can be assigned
         /// E.g. IsNullableType(string) = true, IsNullableType(DateTime) = false
-        ///      IsNullableType(
+        ///      IsNullableType(System.Nullable<int>) = true
         /// </summary>
         /// <param name="type"></param>
         /// <returns></returns>
