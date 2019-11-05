@@ -45,7 +45,7 @@ namespace openCypherTranspiler.openCypherParser.AST
         public IList<MatchPattern> MatchPatterns { get; set; }
 
         /// <summary>
-        /// Return a new MatchDataSource mirrors the old one but with anonymous entities filled with
+        /// Return a new MatchClause mirrors the old one but with anonymous entities filled with
         /// a place holder alias
         /// </summary>
         /// <param name="entity"></param>
@@ -60,8 +60,7 @@ namespace openCypherTranspiler.openCypherParser.AST
                 throw new TranspilerSyntaxErrorException($"Banned prefix for variable aliases: {anonVarPrefix}. Please consider a different prefix.");
             }
 
-            // creating a new DS with implied labels fixed up
-            var matchDsNew = new MatchClause()
+            return new MatchClause()
             {
                 MatchPatterns = MatchPatterns.Select(p => new MatchPattern(p.IsOptionalMatch, p.Select(e =>
                 {
@@ -71,8 +70,6 @@ namespace openCypherTranspiler.openCypherParser.AST
                     return entity;
                 }))).ToList()
             };
-
-            return matchDsNew;
         }
 
 
