@@ -192,6 +192,50 @@ RETURN toUpper(p.Name) as NameCapital, toLower(m.Title) as TitleLC
         }
 
         [TestMethod]
+        public void LabelTypeInferenceTest()
+        {
+            // Positive case already covered in many other tests
+            // Today we only support node label type to be specified
+            // implicitly when its aliases appeared more than once
+
+            // Negative case when the label cannot be inferred
+            {
+                var expectedExceptionThrown = false;
+                try
+                {
+                    var tree = RunQueryAndDumpTree(@"
+MATCH (p)-[:ACTED_IN]-(m:Movie)
+RETURN p.Name AS Name, m.Title as Title
+"
+                    );
+                }
+                catch (TranspilerSyntaxErrorException)
+                {
+                    expectedExceptionThrown = true;
+                }
+                Assert.IsTrue(expectedExceptionThrown);
+            }
+
+            // Negative case when the type cannot be inferred
+            {
+                var expectedExceptionThrown = false;
+                try
+                {
+                    var tree = RunQueryAndDumpTree(@"
+MATCH (p:Person)-[somewhatlinkedto]-(m:Movie)
+RETURN p.Name AS Name, m.Title as Title
+"
+                    );
+                }
+                catch (TranspilerSyntaxErrorException)
+                {
+                    expectedExceptionThrown = true;
+                }
+                Assert.IsTrue(expectedExceptionThrown);
+            }
+        }
+
+        [TestMethod]
         public void OtherWeirdSyntaxTest()
         {
             { 

@@ -14,7 +14,6 @@ using System.Text.RegularExpressions;
 using openCypherTranspiler.Common.Exceptions;
 using openCypherTranspiler.Common.Logging;
 using openCypherTranspiler.openCypherParser.ANTLR;
-using openCypherTranspiler.openCypherParser.AST;
 using openCypherTranspiler.openCypherParser.Common;
 using openCypherTranspiler.Common.Utils;
 
@@ -387,22 +386,16 @@ namespace openCypherTranspiler.openCypherParser.AST
                 Enumerable.Empty<string>();
 
             var returnedExprs = allReturnedEntities
-                .Select(g =>
-                {
-                    if (g.Select(e => e.EntityName).Where(en => !string.IsNullOrEmpty(en)).Distinct().Count() > 1)
-                    {
-                        throw new TranspilerSyntaxErrorException($"Multiple labels assigned to same alias {g.Key}: {string.Join(",", g.Select(e => e.EntityName).Where(en => !string.IsNullOrEmpty(en)))}");
-                    }
-                    return new QueryExpressionWithAlias()
+                .Select(g => new QueryExpressionWithAlias()
                     {
                         Alias = g.Key,
                         InnerExpression = new QueryExpressionProperty()
                         {
-                            Entity = g.FirstOrDefault(en => !string.IsNullOrEmpty(en.EntityName)).Clone(),
+                            Entity = g.First().Clone(),
                             VariableName = g.Key
                         }
-                    };
-                })
+                    }
+                )
                 .Union(
                     allInheritedProperties.Select(alias =>
                         new QueryExpressionWithAlias()
@@ -656,7 +649,7 @@ namespace openCypherTranspiler.openCypherParser.AST
             // In finalizing the SingleQueryNode, we ensure on a best-effort basis that all entity references 
             // have its type spelled out, e.g. In
             //   MATCH (a:Person), (a) WITH a ...
-            // the subsequence reference to 'a' will be marked as entity type 'Person'
+            // the subsequence reference to 'a' will have same implied node type 'Person'
             //
             // To do this, we walk up the tree (bear in mind: bottom of the tree is earlier in the openCypher 
             // query, and root node of the tree is the final result) and in each layer
@@ -688,8 +681,11 @@ namespace openCypherTranspiler.openCypherParser.AST
                 // first pass, propagate all node and edge labels for those sharing aliases
                 entitiesInReturn
                     .Values
+                    .Union(inheritedEntities)
                     .Union(entitiesInMatchPatterns)
-                    .Where(e => !string.IsNullOrEmpty(e.Alias)) // skip over all anonymous node/edge. we later assert that they all have types already specified explicitly 
+                    // skip over anonymous node/edge and untyped entities aliases: they should have type 
+                    // already supplied explicitly (which we ensure during parsing, e.g. we don't allow [] or () for now)
+                    .Where(e => !string.IsNullOrEmpty(e.Alias))
                     .GroupBy(e => e.Alias)
                     .ToList()
                     .ForEach(g =>
