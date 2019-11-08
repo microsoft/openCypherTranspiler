@@ -56,6 +56,13 @@ namespace openCypherTranspiler.LogicalPlanner
             logicalPlanner.StartingOperators = logicalRoot.GetAllUpstreamOperatorsOfType<StartLogicalOperator>().ToList();
             logicalPlanner.TerminalOperators = new List<LogicalOperator>(1) { logicalRoot };
 
+            // populate the ids for operators (for debugging purpose)
+            var i = 0;
+            foreach (var op in allLogicalOps)
+            {
+                op.OperatorDebugId = ++i;
+            }
+
             // bind logical tree with the graph schema
             var bindableStartingOp = logicalPlanner.StartingOperators.Where(op => op is IBindable);
             bindableStartingOp.ToList().ForEach(op => (op as IBindable).Bind(graphDef));
@@ -66,17 +73,7 @@ namespace openCypherTranspiler.LogicalPlanner
             // expand and optimize out columns not used (bottom up)
             logicalPlanner.UpdateActualFieldReferencesForEntityFields();
 
-            // note: in this function, we only deal with graph definition.
-            //       later in code generatation phase, we deal with Cosmos storage descriptors
-            //       which then worries the details of what streams to pull
-
-            // verify that no dangling operator exists
-            var i = 0;
-            foreach (var op in allLogicalOps)
-            {
-                op.OperatorDebugId = ++i;
-            }
-
+            
             var allOpsFromTraversal = logicalPlanner.StartingOperators.SelectMany(op => op.GetAllDownstreamOperatorsOfType<LogicalOperator>()).Distinct().OrderBy(op => op.OperatorDebugId).ToList();
             var allOpsFromBuildingTree = allLogicalOps.OrderBy(op => op.OperatorDebugId).ToList();
             Debug.Assert(allOpsFromTraversal.Count == allOpsFromBuildingTree.Count);
@@ -271,9 +268,8 @@ namespace openCypherTranspiler.LogicalPlanner
             // do a simple projection to remove extra implicitly projected fields if applies
             if (removeExtraImplicitFields)
             {
-                // since all the schema was already mapped to the target aliases in the previous projection operators, only 
-                // simple direct mapping needed, namely 'a AS a'. The gold here is just to remove extra that were not in the
-                // original projected fields
+                // by now, all fields need to be projected are already computed in the previous projection operator
+                // so we just do a project that retains all the fields that are explicitly projected (by doing an 'field AS field')
                 var trimmedSimpleProjExprs = projExprs.Select(n =>
                     new QueryExpressionWithAlias
                     {
@@ -281,9 +277,7 @@ namespace openCypherTranspiler.LogicalPlanner
                         InnerExpression = new QueryExpressionProperty()
                         {
                             VariableName = n.Alias,
-                            DataType = null,
-                            Entity = n.TryGetDirectlyExposedEntity(),
-                            PropertyName = null
+                            Entity = n.InnerExpression.TryGetDirectlyExposedEntity(),
                         }
                     }
                 ).ToList();

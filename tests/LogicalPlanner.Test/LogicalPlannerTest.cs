@@ -357,6 +357,7 @@ ORDER BY p.Name LIMIT 3
         public void TypeEvaluationTest()
         {
             IGraphSchemaProvider graphDef = new JSONGraphSchema(@"./TestData/MovieGraph.json");
+
             // Basic test covers type coercion and type evaluation
             {
                 var lp = RunQueryAndDumpTree(graphDef, @"
@@ -374,6 +375,26 @@ RETURN toInteger(ReleasedStr) as Released, toFloat(ReleasedStr) as ReleasedFloat
                 Assert.IsTrue(lp.TerminalOperators.First().OutputSchema.Any(o => o.FieldAlias == "ReleasedDouble" && ((o as ValueField)?.FieldType ?? default(Type)) == typeof(double?)));
                 Assert.IsTrue(lp.TerminalOperators.First().OutputSchema.Any(o => o.FieldAlias == "ReleasedBool" && ((o as ValueField)?.FieldType ?? default(Type)) == typeof(bool?)));
                 Assert.IsTrue(lp.TerminalOperators.First().OutputSchema.Any(o => o.FieldAlias == "ReleasedFloat2" && ((o as ValueField)?.FieldType ?? default(Type)) == typeof(float?)));
+            }
+
+            // Logic operator used on converted types
+            {
+                var lp = RunQueryAndDumpTree(graphDef, @"
+MATCH (p:Person)-[a:ACTED_IN]->(m:Movie)
+WITH p, m, toString(m.Released) as ReleasedStr
+WITH p, m, tointeger(ReleasedStr) as ReleasedInt
+WHERE ReleasedInt > 1998
+RETURN p.Name, m.Title, ReleasedInt, (ReleasedInt >= 1998) and (ReleasedInt <= 2000) as IsBetween98and00
+"
+                );
+
+                Assert.IsTrue(lp.StartingOperators.Count() > 0);
+                Assert.IsTrue(lp.TerminalOperators.Count() == 1);
+                Assert.IsTrue(lp.TerminalOperators.First().OutputSchema.Count == 4);
+                Assert.IsTrue(lp.TerminalOperators.First().OutputSchema.Any(o => o.FieldAlias == "Name" && ((o as ValueField)?.FieldType ?? default(Type)) == typeof(string)));
+                Assert.IsTrue(lp.TerminalOperators.First().OutputSchema.Any(o => o.FieldAlias == "Title" && ((o as ValueField)?.FieldType ?? default(Type)) == typeof(string)));
+                Assert.IsTrue(lp.TerminalOperators.First().OutputSchema.Any(o => o.FieldAlias == "ReleasedInt" && ((o as ValueField)?.FieldType ?? default(Type)) == typeof(int?)));
+                Assert.IsTrue(lp.TerminalOperators.First().OutputSchema.Any(o => o.FieldAlias == "IsBetween98and00" && ((o as ValueField)?.FieldType ?? default(Type)) == typeof(bool?)));
             }
         }
 

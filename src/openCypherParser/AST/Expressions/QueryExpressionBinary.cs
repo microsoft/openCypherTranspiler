@@ -49,8 +49,8 @@ namespace openCypherTranspiler.openCypherParser.AST
                 case BinaryOperatorType.Logical:
                     // For logical comparison, we ensure that all operands' type are logical already
                     // The return type is always boolean (logical)
-                    if (leftType != typeof(bool) || leftType != typeof(bool?) &&
-                    rightType != typeof(bool) || rightType != typeof(bool?))
+                    if ((leftType != typeof(bool) && leftType != typeof(bool?)) ||
+                        (rightType != typeof(bool) && rightType != typeof(bool?)) )
                     {
                         throw new TranspilerNotSupportedException($"Logical binary operator {Operator} operating must operate on bool types. Actual types: {leftType}, {rightType}");
                     }
