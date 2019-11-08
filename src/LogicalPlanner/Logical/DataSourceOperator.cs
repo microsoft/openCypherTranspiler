@@ -42,56 +42,60 @@ namespace openCypherTranspiler.LogicalPlanner
             ValueField edgeSrcIdField = null;
             ValueField edgeSinkIdField = null;
 
-            try
+            if (Entity is NodeEntity)
             {
-                if (Entity is NodeEntity)
+                var nodeDef = graphDefinition.GetNodeDefinition(Entity.EntityName);
+
+                if (nodeDef == null)
                 {
-                    NodeSchema nodeDef = graphDefinition.GetNodeDefinition(Entity.EntityName);
-                    entityUniqueName = nodeDef.Id;
-                    nodeIdField = new ValueField(nodeDef.NodeIdProperty.PropertyName, nodeDef.NodeIdProperty.DataType);
-
-                    properties.AddRange(nodeDef.Properties.Select(p => new ValueField(p.PropertyName, p.DataType)));
-                    properties.Add(nodeIdField);
+                    throw new TranspilerBindingException($"Failed to bind entity with alias '{Entity.Alias}' of type '{Entity.EntityName}' to graph definition.");
                 }
-                else
-                {
-                    var edgeEnt = Entity as RelationshipEntity;
-                    EdgeSchema edgeDef = null;
 
-                    switch (edgeEnt.RelationshipDirection)
-                    {
-                        case RelationshipEntity.Direction.Forward:
-                            edgeDef = graphDefinition.GetEdgeDefinition(edgeEnt.EntityName, edgeEnt.LeftEntityName, edgeEnt.RightEntityName);
-                            break;
-                        case RelationshipEntity.Direction.Backward:
-                            edgeDef = graphDefinition.GetEdgeDefinition(edgeEnt.EntityName, edgeEnt.RightEntityName, edgeEnt.LeftEntityName);
-                            break;
-                        default:
-                            // either direction
-                            // TODO: we don't handle 'both' direction yet
-                            Debug.Assert(edgeEnt.RelationshipDirection == RelationshipEntity.Direction.Both);
-                            edgeDef = graphDefinition.GetEdgeDefinition(edgeEnt.EntityName, edgeEnt.LeftEntityName, edgeEnt.RightEntityName);
-                            if (edgeDef == null)
-                            {
-                                edgeDef = graphDefinition.GetEdgeDefinition(edgeEnt.EntityName, edgeEnt.RightEntityName, edgeEnt.LeftEntityName);
-                            }
-                            break;
-                    }
+                entityUniqueName = nodeDef.Id;
+                nodeIdField = new ValueField(nodeDef.NodeIdProperty.PropertyName, nodeDef.NodeIdProperty.DataType);
 
-                    entityUniqueName = edgeDef.Id;
-                    sourceEntityName = edgeDef.SourceNodeId;
-                    sinkEntityName = edgeDef.SinkNodeId;
-                    edgeSrcIdField = new ValueField(edgeDef.SourceIdProperty.PropertyName, edgeDef.SourceIdProperty.DataType);
-                    edgeSinkIdField = new ValueField(edgeDef.SinkIdProperty.PropertyName, edgeDef.SinkIdProperty.DataType);
-
-                    properties.AddRange(edgeDef.Properties.Select(p => new ValueField(p.PropertyName, p.DataType)));
-                    properties.Add(edgeSrcIdField);
-                    properties.Add(edgeSinkIdField);
-                }
+                properties.AddRange(nodeDef.Properties.Select(p => new ValueField(p.PropertyName, p.DataType)));
+                properties.Add(nodeIdField);
             }
-            catch (KeyNotFoundException e)
+            else
             {
-                throw new TranspilerBindingException($"Failed to binding entity with alias '{Entity.Alias}' of type '{Entity.EntityName}' to graph definition. Inner error: {e.GetType().Name}: {e.Message}");
+                var edgeEnt = Entity as RelationshipEntity;
+                EdgeSchema edgeDef = null;
+
+                switch (edgeEnt.RelationshipDirection)
+                {
+                    case RelationshipEntity.Direction.Forward:
+                        edgeDef = graphDefinition.GetEdgeDefinition(edgeEnt.EntityName, edgeEnt.LeftEntityName, edgeEnt.RightEntityName);
+                        break;
+                    case RelationshipEntity.Direction.Backward:
+                        edgeDef = graphDefinition.GetEdgeDefinition(edgeEnt.EntityName, edgeEnt.RightEntityName, edgeEnt.LeftEntityName);
+                        break;
+                    default:
+                        // either direction
+                        // TODO: we don't handle 'both' direction yet
+                        Debug.Assert(edgeEnt.RelationshipDirection == RelationshipEntity.Direction.Both);
+                        edgeDef = graphDefinition.GetEdgeDefinition(edgeEnt.EntityName, edgeEnt.LeftEntityName, edgeEnt.RightEntityName);
+                        if (edgeDef == null)
+                        {
+                            edgeDef = graphDefinition.GetEdgeDefinition(edgeEnt.EntityName, edgeEnt.RightEntityName, edgeEnt.LeftEntityName);
+                        }
+                        break;
+                }
+
+                if (edgeDef == null)
+                {
+                    throw new TranspilerBindingException($"Failed to bind entity with alias '{Entity.Alias}' of type '{Entity.EntityName}' to graph definition.");
+                }
+
+                entityUniqueName = edgeDef.Id;
+                sourceEntityName = edgeDef.SourceNodeId;
+                sinkEntityName = edgeDef.SinkNodeId;
+                edgeSrcIdField = new ValueField(edgeDef.SourceIdProperty.PropertyName, edgeDef.SourceIdProperty.DataType);
+                edgeSinkIdField = new ValueField(edgeDef.SinkIdProperty.PropertyName, edgeDef.SinkIdProperty.DataType);
+
+                properties.AddRange(edgeDef.Properties.Select(p => new ValueField(p.PropertyName, p.DataType)));
+                properties.Add(edgeSrcIdField);
+                properties.Add(edgeSinkIdField);
             }
 
             Debug.Assert(OutputSchema.Count == 1

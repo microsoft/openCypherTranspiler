@@ -733,6 +733,13 @@ return p.Name as Name, m.Title as Title
     ";
                 RunQueryAndCompare(queryText);
             }
+            {
+                var queryText = @"
+MATCH (m:Movie)-[:DIRECTED]-(p:Person)
+return p.Name as Name, m.Title as Title
+    ";
+                RunQueryAndCompare(queryText);
+            }
 
             // negative test case (wrong direction)
             {

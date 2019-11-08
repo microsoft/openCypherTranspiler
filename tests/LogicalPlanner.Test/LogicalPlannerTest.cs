@@ -420,9 +420,10 @@ RETURN p.Name AS Name, p2.Name as CoStarName
             }
         }
 
+        [TestMethod]
         public void NegativeTestLogicalPlanner()
         {
-            IGraphSchemaProvider graphDef = new JSONGraphSchema(@".\TestData\Movie\MovieGraph.json");
+            IGraphSchemaProvider graphDef = new JSONGraphSchema(@"./TestData/MovieGraph.json");
 
             // Our implementation block of returning whole entity instead of its fields
             // We don't support packing whole entity into JSON today, as JSON blob in Cosmos
@@ -441,7 +442,7 @@ RETURN p
                 }
                 catch (TranspilerNotSupportedException e)
                 {
-                    Assert.IsTrue(e.Message.Contains("Query final return body returns the whole entity"));
+                    Assert.IsTrue(e.Message.Contains("Returning the whole entity"));
                 }
             }
 
@@ -463,8 +464,27 @@ RETURN p.Name, m.Title
                 }
 
             }
+
+            // edge cannot be resolved case
+            {
+                try
+                {
+                    var lp = RunQueryAndDumpTree(graphDef, @"
+MATCH (p:Person)<-[a:ACTED_IN]-(m:Movie)
+RETURN p.Name, m.Title
+"
+                    );
+                    Assert.Fail("Didn't failed as expected.");
+                }
+                catch (TranspilerBindingException e)
+                {
+                    Assert.IsTrue(e.Message.Contains("Failed to bind entity with alias 'a'"));
+                }
+
+            }
         }
 
+        [TestMethod]
         public void NegativeTestLogicalPlannerSchemaBinding()
         {
             IGraphSchemaProvider graphDef = new JSONGraphSchema(@"./TestData/MovieGraph.json");
@@ -475,7 +495,7 @@ RETURN p.Name, m.Title
                 {
                     var lp = RunQueryAndDumpTree(graphDef, @"
 MATCH (p:Actor)
-RETURN p
+RETURN p.Name
 "
                     );
                     Assert.Fail("Didn't failed as expected.");
@@ -489,7 +509,7 @@ RETURN p
                 {
                     var lp = RunQueryAndDumpTree(graphDef, @"
 MATCH (p:Person)-[:Performed]-(m:Movie)
-RETURN p
+RETURN p.Name
 "
                     );
                     Assert.Fail("Didn't failed as expected.");

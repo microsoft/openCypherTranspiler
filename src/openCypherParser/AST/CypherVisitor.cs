@@ -781,7 +781,7 @@ namespace openCypherTranspiler.openCypherParser.AST
             var entitiesInFinalReturn = GetDirectlyExposedEntitiesWithAliasApplied(singleQuery.EntityPropertySelected);
             if (entitiesInFinalReturn.Count() > 0)
             {
-                throw new TranspilerNotSupportedException($"Entities ({string.Join(", ", entitiesInFinalReturn.Select(e => e.Alias))}) in return statement");
+                throw new TranspilerNotSupportedException($"Returning the whole entity '{entitiesInFinalReturn.Select(e => e.Alias).First()}' instead of its properties");
             }
 
             return singleQuery;
