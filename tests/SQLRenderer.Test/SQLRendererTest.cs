@@ -565,9 +565,9 @@ RETURN Title, Name
     ";
                     TranspileToSQL(queryText);
                 }
-                catch (TranspilerSyntaxErrorException e)
+                catch (TranspilerBindingException e)
                 {
-                    Assert.IsTrue(e.Message.Contains("'a' which does not exist"));
+                    Assert.IsTrue(e.Message.Contains("Alias 'a' does not exist in the current context"));
                     expectedExceptionThrown = true;
                 }
                 Assert.IsTrue(expectedExceptionThrown);
@@ -587,9 +587,9 @@ RETURN  Title, Name
     ";
                     TranspileToSQL(queryText);
                 }
-                catch (TranspilerSyntaxErrorException e)
+                catch (TranspilerBindingException e)
                 {
-                    Assert.IsTrue(e.Message.Contains("'TitleNotExist' does not exist"));
+                    Assert.IsTrue(e.Message.Contains("Alias 'TitleNotExist' does not exist in the current context"));
                     expectedExceptionThrown = true;
                 }
                 Assert.IsTrue(expectedExceptionThrown);
