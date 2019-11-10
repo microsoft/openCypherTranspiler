@@ -74,12 +74,22 @@ namespace openCypherTranspiler.openCypherParser.AST
                     {
                         if (!TypeCoersionTables.CoersionTableEqualityComparison.TryGetValue((leftTypeUnboxed, rightTypeUnboxed), out resultedTypeRaw))
                         {
-                            throw new TranspilerInternalErrorException($"Unexpected use of binary operator {Operator.Name} operating between types {leftTypeUnboxed} and {rightTypeUnboxed}");
+                            throw new TranspilerInternalErrorException($"Unexpected use of (un)equality operator {Operator.Name} operating between types {leftTypeUnboxed} and {rightTypeUnboxed}");
                         }
+                    }
+                    else if (Operator.Name == BinaryOperator.IN)
+                    {
+                        // IN need special handling as right operand is a list
+                        var innerTypes = rightTypeUnboxed.GetGenericArguments();
+                        if (innerTypes == null || innerTypes.Length != 1)
+                        {
+                            throw new TranspilerInternalErrorException($"Unexpected use of IN operator, the right type {rightTypeUnboxed} is not a list of value type");
+                        }
+                        resultedTypeRaw = typeof(bool);
                     }
                     else
                     {
-                        if (!TypeCoersionTables.CoersionTableInequalityComparison.TryGetValue((leftTypeUnboxed, rightTypeUnboxed), out resultedTypeRaw))
+                        if (!TypeCoersionTables.CoersionTableDefaultComparison.TryGetValue((leftTypeUnboxed, rightTypeUnboxed), out resultedTypeRaw))
                         {
                             throw new TranspilerInternalErrorException($"Unexpected use of binary operator {Operator.Name} operating between types {leftTypeUnboxed} and {rightTypeUnboxed}");
                         }

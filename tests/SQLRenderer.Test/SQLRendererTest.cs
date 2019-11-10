@@ -605,7 +605,7 @@ RETURN  Title, Name
                 var queryText = @"
 MATCH (p:Person)-[:ACTED_IN]-(m:Movie)
 WHERE p.Name in ['Tom Hanks', 'Meg Ryan'] and m.Released >= 1990
-RETURN p.Name as Name, m.Title AS Title, m.Released % 100 as ReleasedYear2Digit, m.Released - 2000 as YearSinceY2k, m.Released * 1 / 1 ^ 1 AS TestReleasedYear
+RETURN p.Name as Name, p.Name in ['Tom Hanks', 'Meg Ryan'] as NameChecksOut, m.Title AS Title, m.Released % 100 as ReleasedYear2Digit, m.Released - 2000 as YearSinceY2k, m.Released * 1 / 1 ^ 1 AS TestReleasedYear
 ";
 
                 RunQueryAndCompare(queryText);

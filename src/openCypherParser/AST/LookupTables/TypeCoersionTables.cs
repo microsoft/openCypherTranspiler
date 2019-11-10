@@ -1394,7 +1394,7 @@ namespace openCypherTranspiler.openCypherParser.AST
             { (typeof(bool), typeof(bool)), typeof(bool) },
         };
 
-        public static readonly IDictionary<(Type O1Type, Type O2Type), Type> CoersionTableInequalityComparison = new Dictionary<(Type Op1Type, Type Op2Type), Type>()
+        public static readonly IDictionary<(Type O1Type, Type O2Type), Type> CoersionTableDefaultComparison = new Dictionary<(Type Op1Type, Type Op2Type), Type>()
         {
             { (typeof(int), typeof(int)), typeof(bool) },
             { (typeof(int), typeof(double)), typeof(bool) },
