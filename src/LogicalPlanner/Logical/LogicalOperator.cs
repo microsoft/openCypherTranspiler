@@ -87,6 +87,52 @@ namespace openCypherTranspiler.LogicalPlanner
             _outOperators.Add(op);
         }
 
+        internal void UpdatePropertyBasedOnAliasFromInputSchema(QueryExpressionProperty prop)
+        {
+            var matchedField = InputSchema.FirstOrDefault(f => f.FieldAlias == prop.VariableName);
+
+            if (matchedField == null)
+            {
+                throw new TranspilerBindingException($"Alias '{prop.VariableName}' does not exist in the current context");
+            }
+
+            if (string.IsNullOrEmpty(prop.PropertyName))
+            {
+                // direct reference to an alias (value column or entity column)
+                if (matchedField is ValueField)
+                {
+                    prop.DataType = (matchedField as ValueField).FieldType;
+                }
+                else
+                {
+                    // entity field reference in a single field expression
+                    // this is valid only in handful situations, such as Count(d), Count(distinct(d))
+                    // in such case, we populate the Entity object with correct entity type so that code generator can use it later
+                    Debug.Assert(matchedField is EntityField);
+                    var matchedEntity = matchedField as EntityField;
+                    prop.Entity = matchedEntity.Type == EntityField.EntityType.Node ?
+                        new NodeEntity() { EntityName = matchedEntity.EntityName, Alias = matchedEntity.FieldAlias } as Entity :
+                        new RelationshipEntity() { EntityName = matchedEntity.EntityName, Alias = matchedEntity.FieldAlias } as Entity;
+                }
+            }
+            else
+            {
+                // property dereference of an entity column
+                if (!(matchedField is EntityField))
+                {
+                    throw new TranspilerBindingException($"Failed to dereference property {prop.PropertyName} for alias {prop.VariableName}, which is not an alias of entity type as expected");
+                }
+                var entField = matchedField as EntityField;
+                var entPropField = entField.EncapsulatedFields.FirstOrDefault(f => f.FieldAlias == prop.PropertyName);
+                if (entPropField == null)
+                {
+                    throw new TranspilerBindingException($"Failed to dereference property {prop.PropertyName} for alias {prop.VariableName}, Entity type {entField.BoundEntityName} does not have a property named {prop.PropertyName}");
+                }
+                entField.AddReferenceFieldName(prop.PropertyName);
+                prop.DataType = entPropField.FieldType;
+            }
+        }
+
         public override string ToString()
         {
             var sb = new StringBuilder();

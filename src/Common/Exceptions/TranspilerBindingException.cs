@@ -11,7 +11,7 @@ namespace openCypherTranspiler.Common.Exceptions
     public class TranspilerBindingException : TranspilerException
     {
         public TranspilerBindingException(string bindingErrorMsg) :
-            base($"Data binding error error: {bindingErrorMsg}")
+            base($"Data binding error: {bindingErrorMsg}")
         {
 
         }

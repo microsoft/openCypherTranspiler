@@ -138,6 +138,15 @@ namespace openCypherTranspiler.LogicalPlanner
                             };
                     });
             }
+
+            // Update in-place for property references inside FilterExpression
+            if (FilterExpression != null)
+            {
+                foreach (var prop in FilterExpression.GetChildrenOfType<QueryExpressionProperty>())
+                {
+                    UpdatePropertyBasedOnAliasFromInputSchema(prop);
+                }
+            }
         }
 
         internal override void AppendReferencedProperties(IDictionary<string, EntityField> entityFields)
@@ -194,7 +203,7 @@ namespace openCypherTranspiler.LogicalPlanner
                     // field member access (i.e. [VariableName].[fieldName]), just append to list
                     if (!entityFields.ContainsKey(varName))
                     {
-                        throw new TranspilerSyntaxErrorException($"Failed to access member '{fieldName} for '{varName}' which does not exist");
+                        throw new TranspilerSyntaxErrorException($"Failed to access member '{fieldName}' for '{varName}' which does not exist");
                     }
                     var entity = entityFields[varName];
                     entity.AddReferenceFieldName(fieldName);

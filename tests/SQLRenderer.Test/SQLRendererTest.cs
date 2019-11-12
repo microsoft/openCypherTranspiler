@@ -565,9 +565,9 @@ RETURN Title, Name
     ";
                     TranspileToSQL(queryText);
                 }
-                catch (TranspilerSyntaxErrorException e)
+                catch (TranspilerBindingException e)
                 {
-                    Assert.IsTrue(e.Message.Contains("'a' which does not exist"));
+                    Assert.IsTrue(e.Message.Contains("Alias 'a' does not exist in the current context"));
                     expectedExceptionThrown = true;
                 }
                 Assert.IsTrue(expectedExceptionThrown);
@@ -587,9 +587,9 @@ RETURN  Title, Name
     ";
                     TranspileToSQL(queryText);
                 }
-                catch (TranspilerSyntaxErrorException e)
+                catch (TranspilerBindingException e)
                 {
-                    Assert.IsTrue(e.Message.Contains("'TitleNotExist' does not exist"));
+                    Assert.IsTrue(e.Message.Contains("Alias 'TitleNotExist' does not exist in the current context"));
                     expectedExceptionThrown = true;
                 }
                 Assert.IsTrue(expectedExceptionThrown);
@@ -605,7 +605,7 @@ RETURN  Title, Name
                 var queryText = @"
 MATCH (p:Person)-[:ACTED_IN]-(m:Movie)
 WHERE p.Name in ['Tom Hanks', 'Meg Ryan'] and m.Released >= 1990
-RETURN p.Name as Name, m.Title AS Title, m.Released % 100 as ReleasedYear2Digit, m.Released - 2000 as YearSinceY2k, m.Released * 1 / 1 ^ 1 AS TestReleasedYear
+RETURN p.Name as Name, p.Name in ['Tom Hanks', 'Meg Ryan'] as NameChecksOut, m.Title AS Title, m.Released % 100 as ReleasedYear2Digit, m.Released - 2000 as YearSinceY2k, m.Released * 1 / 1 ^ 1 AS TestReleasedYear
 ";
 
                 RunQueryAndCompare(queryText);
@@ -729,6 +729,13 @@ return p.Name as Name1, p2.Name as Name2
             {
                 var queryText = @"
 MATCH (p:Person)-[:DIRECTED]-(m:Movie)
+return p.Name as Name, m.Title as Title
+    ";
+                RunQueryAndCompare(queryText);
+            }
+            {
+                var queryText = @"
+MATCH (m:Movie)-[:DIRECTED]-(p:Person)
 return p.Name as Name, m.Title as Title
     ";
                 RunQueryAndCompare(queryText);

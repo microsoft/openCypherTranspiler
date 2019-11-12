@@ -87,22 +87,12 @@ namespace openCypherTranspiler.CommonTest
 
         public EdgeSchema GetEdgeDefinition(string edgeVerb, string fromNodeName, string toNodeName)
         {
-            var edge = _allEdgeDefinions?.Where(n => n.Name == edgeVerb && n.SourceNodeId == fromNodeName && n.SinkNodeId == toNodeName).FirstOrDefault();
-            if (edge == null)
-            {
-                throw new KeyNotFoundException($"Edge with edgeverb = {edgeVerb}, fromNodeName = {fromNodeName} and toNodename = {toNodeName} not found!");
-            }
-            return edge;
+            return _allEdgeDefinions?.Where(n => n.Name == edgeVerb && n.SourceNodeId == fromNodeName && n.SinkNodeId == toNodeName).FirstOrDefault();
         }
 
         public NodeSchema GetNodeDefinition(string nodeName)
         {
-            var node = _allNodeDefinions?.Where(n => n.Name == nodeName).FirstOrDefault();
-            if (node == null)
-            {
-                throw new KeyNotFoundException($"Node with name = {nodeName} not found!");
-            }
-            return node;
+            return _allNodeDefinions?.Where(n => n.Name == nodeName).FirstOrDefault();
         }
         
     }

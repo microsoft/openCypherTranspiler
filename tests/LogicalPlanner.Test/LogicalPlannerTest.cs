@@ -357,6 +357,7 @@ ORDER BY p.Name LIMIT 3
         public void TypeEvaluationTest()
         {
             IGraphSchemaProvider graphDef = new JSONGraphSchema(@"./TestData/MovieGraph.json");
+
             // Basic test covers type coercion and type evaluation
             {
                 var lp = RunQueryAndDumpTree(graphDef, @"
@@ -374,6 +375,26 @@ RETURN toInteger(ReleasedStr) as Released, toFloat(ReleasedStr) as ReleasedFloat
                 Assert.IsTrue(lp.TerminalOperators.First().OutputSchema.Any(o => o.FieldAlias == "ReleasedDouble" && ((o as ValueField)?.FieldType ?? default(Type)) == typeof(double?)));
                 Assert.IsTrue(lp.TerminalOperators.First().OutputSchema.Any(o => o.FieldAlias == "ReleasedBool" && ((o as ValueField)?.FieldType ?? default(Type)) == typeof(bool?)));
                 Assert.IsTrue(lp.TerminalOperators.First().OutputSchema.Any(o => o.FieldAlias == "ReleasedFloat2" && ((o as ValueField)?.FieldType ?? default(Type)) == typeof(float?)));
+            }
+
+            // Logic operator used on converted types
+            {
+                var lp = RunQueryAndDumpTree(graphDef, @"
+MATCH (p:Person)-[a:ACTED_IN]->(m:Movie)
+WITH p, m, toString(m.Released) as ReleasedStr
+WITH p, m, tointeger(ReleasedStr) as ReleasedInt
+WHERE ReleasedInt > 1998
+RETURN p.Name, m.Title, ReleasedInt, (ReleasedInt >= 1998) and (ReleasedInt <= 2000) as IsBetween98and00
+"
+                );
+
+                Assert.IsTrue(lp.StartingOperators.Count() > 0);
+                Assert.IsTrue(lp.TerminalOperators.Count() == 1);
+                Assert.IsTrue(lp.TerminalOperators.First().OutputSchema.Count == 4);
+                Assert.IsTrue(lp.TerminalOperators.First().OutputSchema.Any(o => o.FieldAlias == "Name" && ((o as ValueField)?.FieldType ?? default(Type)) == typeof(string)));
+                Assert.IsTrue(lp.TerminalOperators.First().OutputSchema.Any(o => o.FieldAlias == "Title" && ((o as ValueField)?.FieldType ?? default(Type)) == typeof(string)));
+                Assert.IsTrue(lp.TerminalOperators.First().OutputSchema.Any(o => o.FieldAlias == "ReleasedInt" && ((o as ValueField)?.FieldType ?? default(Type)) == typeof(int?)));
+                Assert.IsTrue(lp.TerminalOperators.First().OutputSchema.Any(o => o.FieldAlias == "IsBetween98and00" && ((o as ValueField)?.FieldType ?? default(Type)) == typeof(bool?)));
             }
         }
 
@@ -420,9 +441,10 @@ RETURN p.Name AS Name, p2.Name as CoStarName
             }
         }
 
+        [TestMethod]
         public void NegativeTestLogicalPlanner()
         {
-            IGraphSchemaProvider graphDef = new JSONGraphSchema(@".\TestData\Movie\MovieGraph.json");
+            IGraphSchemaProvider graphDef = new JSONGraphSchema(@"./TestData/MovieGraph.json");
 
             // Our implementation block of returning whole entity instead of its fields
             // We don't support packing whole entity into JSON today, as JSON blob in Cosmos
@@ -441,7 +463,7 @@ RETURN p
                 }
                 catch (TranspilerNotSupportedException e)
                 {
-                    Assert.IsTrue(e.Message.Contains("Query final return body returns the whole entity"));
+                    Assert.IsTrue(e.Message.Contains("Returning the whole entity"));
                 }
             }
 
@@ -463,8 +485,27 @@ RETURN p.Name, m.Title
                 }
 
             }
+
+            // edge cannot be resolved case
+            {
+                try
+                {
+                    var lp = RunQueryAndDumpTree(graphDef, @"
+MATCH (p:Person)<-[a:ACTED_IN]-(m:Movie)
+RETURN p.Name, m.Title
+"
+                    );
+                    Assert.Fail("Didn't failed as expected.");
+                }
+                catch (TranspilerBindingException e)
+                {
+                    Assert.IsTrue(e.Message.Contains("Failed to bind entity with alias 'a'"));
+                }
+
+            }
         }
 
+        [TestMethod]
         public void NegativeTestLogicalPlannerSchemaBinding()
         {
             IGraphSchemaProvider graphDef = new JSONGraphSchema(@"./TestData/MovieGraph.json");
@@ -475,7 +516,7 @@ RETURN p.Name, m.Title
                 {
                     var lp = RunQueryAndDumpTree(graphDef, @"
 MATCH (p:Actor)
-RETURN p
+RETURN p.Name
 "
                     );
                     Assert.Fail("Didn't failed as expected.");
@@ -489,7 +530,7 @@ RETURN p
                 {
                     var lp = RunQueryAndDumpTree(graphDef, @"
 MATCH (p:Person)-[:Performed]-(m:Movie)
-RETURN p
+RETURN p.Name
 "
                     );
                     Assert.Fail("Didn't failed as expected.");
